@@ -1,1 +1,22 @@
 
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "elias-bingo",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-25",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BINGO_ROOMS",
+        "class_name": "BingoRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BingoRoom"]
+    }
+  ]
+}
+
