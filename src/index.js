@@ -28,6 +28,7 @@ export class BingoRoom {
       if (!this.roomState.cards) this.roomState.cards = {};
       if (!this.roomState.claims) this.roomState.claims = {};
       if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
+      if (!Number.isFinite(Number(this.roomState.cardPrice))) this.roomState.cardPrice = 0;
     });
   }
 
@@ -82,6 +83,35 @@ export class BingoRoom {
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
       sender.send(JSON.stringify({type:"NEW_ROUND_STARTED",gameRound:this.roomState.gameRound}));
       return;
+    }
+    if (data.type === "ADMIN_SET_CARD_PRICE") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const price = Number(data.price);
+      if (!Number.isFinite(price) || price <= 0 || price > 100000000) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid price per card"})); return; }
+      this.roomState.cardPrice = price; await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"CARD_PRICE_SAVED",price})); return;
+    }
+    if (data.type === "PLAYER_PURCHASE_CARDS") {
+      const playerId=String(data.playerId||"").slice(0,100), player=this.roomState.players[playerId];
+      const requested=Array.isArray(data.cards)?[...new Set(data.cards.map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=300))]:[];
+      const price=Number(this.roomState.cardPrice);
+      if(!player||!requested.length){sender.send(JSON.stringify({type:"ERROR",message:"Connect to the game and select at least one card"}));return;}
+      if(!Number.isFinite(price)||price<=0){sender.send(JSON.stringify({type:"ERROR",message:"The Admin has not set a card price yet"}));return;}
+      if(this.roomState.depositConfig?.enabled&&!player.depositApproved){sender.send(JSON.stringify({type:"ERROR",message:"Your deposit must be approved before buying cards"}));return;}
+      const already=new Set(player.approvedCards||[]),cards=requested.filter(n=>!already.has(n));
+      if(!cards.length){sender.send(JSON.stringify({type:"ERROR",message:"You already own all selected cards"}));return;}
+      const unavailable=cards.filter(n=>{const owner=this.roomState.cards[String(n)];return owner&&owner.playerId!==playerId;});
+      if(unavailable.length){sender.send(JSON.stringify({type:"ERROR",message:"These cards are unavailable: "+unavailable.join(", ")}));return;}
+      const total=price*cards.length,balance=Number(player.walletBalance)||0;
+      if(balance<total){sender.send(JSON.stringify({type:"ERROR",message:"Insufficient balance. Need "+total.toFixed(2)+" ETB; available "+balance.toFixed(2)+" ETB."}));return;}
+      player.walletBalance=balance-total;player.approvedCards=[...new Set([...(player.approvedCards||[]),...cards])].sort((x,y)=>x-y);
+      player.pendingCards=(player.pendingCards||[]).filter(n=>!cards.includes(n));player.selectedCards=[...player.approvedCards];player.selectedCard=player.approvedCards[0]||null;
+      if(!Array.isArray(player.cardPurchases))player.cardPurchases=[];
+      player.cardPurchases.push({cards,pricePerCard:price,total,currency:"ETB",createdAt:Date.now()});
+      for(const n of cards)this.roomState.cards[String(n)]={playerId,status:"approved"};
+      await this.saveState();this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"CARD_PURCHASE_SUCCESS",cards,total,balance:player.walletBalance}));return;
     }
     if (data.type === "ADMIN_SYNC_STATE") {
       let role = null;
@@ -157,7 +187,7 @@ export class BingoRoom {
       deposit.status = decision;
       deposit.reviewedAt = Date.now();
       const player = this.roomState.players[deposit.playerId];
-      if (player && decision === "approved") player.depositApproved = true;
+      if (player && decision === "approved") { player.depositApproved = true; player.walletBalance = (Number(player.walletBalance)||0) + Number(deposit.amount||0); deposit.creditedToWallet = true; }
       if (player && decision === "rejected") player.depositApproved = false;
       await this.saveState();
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
@@ -250,7 +280,7 @@ export class BingoRoom {
       const name = String(data.name || "").trim().slice(0, 60);
       const rawCards = Array.isArray(data.cards) ? data.cards : [data.card];
       const cards = [...new Set(rawCards.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 300))].slice(0, 300);
-      if (!playerId || !name || cards.length === 0) {
+      if (!playerId || !name) {
         sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and at least one card are required" })); return;
       }
       const previous = this.roomState.players[playerId] || {};
@@ -260,17 +290,9 @@ export class BingoRoom {
       if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
       const approvedCards = Array.isArray(previous.approvedCards) ? previous.approvedCards : [];
       const pendingCards = Array.isArray(previous.pendingCards) ? previous.pendingCards : [];
-      const unavailable = [];
-      for (const cardNumber of cards) {
-        if (approvedCards.includes(cardNumber) || pendingCards.includes(cardNumber)) continue;
-        const key = String(cardNumber), owner = this.roomState.cards[key];
-        if (owner && owner.playerId !== playerId) { unavailable.push(cardNumber); continue; }
-        this.roomState.cards[key] = { playerId, status: "pending" };
-        pendingCards.push(cardNumber);
-      }
-      this.roomState.players[playerId] = { ...previous, name, walletBalance: Number(previous.walletBalance)||0, approvedCards, pendingCards: [...new Set(pendingCards)].sort((a,b)=>a-b), selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
+      this.roomState.players[playerId] = { ...previous, name, walletBalance: Number(previous.walletBalance)||0, approvedCards, pendingCards, selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
       await this.saveState();
-      sender.send(JSON.stringify({type:"CARD_REQUEST_RESULT",pendingCards:this.roomState.players[playerId].pendingCards,approvedCards,unavailable}));
+      sender.send(JSON.stringify({type:"PLAYER_JOINED",approvedCards}));
       this.broadcast({ type: "ROOM_STATE", data: this.roomState });
       return;
     }
