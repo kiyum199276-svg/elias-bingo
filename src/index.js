@@ -19,6 +19,7 @@ export class BingoRoom {
     this.env = env;
     this.ready = this.ctx.blockConcurrencyWhile(async () => {
       this.roomState = await this.ctx.storage.get("roomState");
+      this.adminToken = await this.ctx.storage.get("adminToken") || null;
       if (!this.roomState) {
         this.roomState = { gameId: null, status: "waiting", calledNumbers: [], players: {}, cards: {}, updatedAt: Date.now() };
         await this.ctx.storage.put("roomState", this.roomState);
@@ -52,11 +53,11 @@ export class BingoRoom {
     if (data.type === "ADMIN_AUTH") {
       const token = String(data.token || "");
       if (token.length < 24) { sender.send(JSON.stringify({type:"ERROR",message:"Invalid admin key"})); return; }
-      if (!this.roomState.adminToken) {
-        this.roomState.adminToken = token;
-        await this.saveState();
+      if (!this.adminToken) {
+        this.adminToken = token;
+        await this.ctx.storage.put("adminToken", token);
       }
-      if (this.roomState.adminToken !== token) { sender.send(JSON.stringify({type:"ERROR",message:"Admin key rejected"})); return; }
+      if (this.adminToken !== token) { sender.send(JSON.stringify({type:"ERROR",message:"Admin key rejected"})); return; }
       this.ctx.getWebSockets().forEach(ws => { if (ws === sender) { try { ws.serializeAttachment({role:"admin"}); } catch {} } });
       sender.send(JSON.stringify({type:"ADMIN_AUTH_OK"}));
       return;
