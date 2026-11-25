@@ -59,6 +59,18 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <button id="submitDeposit" type="button" style="width:100%;margin-top:8px">Submit payment reference</button>
   <div id="depositStatus" class="help">Connect to see deposit requirements.</div>
 </section>
+<section class="panel" id="walletPanel" style="margin-top:12px" hidden>
+  <strong>Winnings & Withdrawals / የሽልማት ገንዘብ</strong>
+  <div id="walletBalance" class="help">Available balance: 0 ETB</div>
+  <div style="display:grid;gap:8px;margin-top:10px">
+    <input id="withdrawAmount" type="number" min="0.01" step="0.01" placeholder="Withdrawal amount" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <select id="withdrawMethod" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px"><option>Telebirr</option><option>CBE Birr</option><option>E-Birr</option></select>
+    <input id="withdrawAccount" placeholder="Your receiving account number" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <button id="requestWithdrawal" type="button">Request withdrawal</button>
+  </div>
+  <div id="withdrawalStatus" class="help">Winnings become available only after the Admin confirms your Bingo win.</div>
+  <div id="withdrawalHistory" class="help"></div>
+</section>
 <section class="panel" style="margin-top:12px">
   <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
   <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
@@ -145,6 +157,8 @@ let winningPatternMode="auto";
 let winningPatternName="";
 let depositConfig={enabled:false};
 let myDeposit=null;
+let myPlayerRecord=null;
+let myWithdrawals=[];
 let approvedCards=[];
 let pendingCards=[];
 const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
@@ -159,6 +173,16 @@ function renderDepositPanel(){
  details.textContent="Pay "+depositConfig.amount+" "+depositConfig.currency+" using "+depositConfig.method+" to account: "+depositConfig.account+". After paying, enter your transaction reference below.";
  if(myDeposit){status.textContent="Deposit status: "+myDeposit.status.toUpperCase()+" • Reference: "+myDeposit.reference;if(myDeposit.status==="pending"||myDeposit.status==="approved"){input.disabled=true;button.disabled=true;return;}}
  input.disabled=false;button.disabled=false;
+}
+function renderWalletPanel(){
+ const panel=document.getElementById("walletPanel");if(!panel)return;panel.hidden=false;
+ const balance=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0;
+ document.getElementById("walletBalance").textContent="Available balance: "+balance.toFixed(2)+" ETB";
+ const history=document.getElementById("withdrawalHistory");history.innerHTML="<strong>Withdrawal history</strong>";
+ if(!myWithdrawals.length){history.appendChild(document.createTextNode(" • No withdrawal requests yet."));return;}
+ myWithdrawals.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(item=>{
+  const line=document.createElement("div");line.textContent=item.amount+" "+(item.currency||"ETB")+" • "+item.method+" • "+item.status.toUpperCase()+" • "+new Date(item.createdAt).toLocaleString();history.appendChild(line);
+ });
 }
 function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
@@ -191,6 +215,9 @@ function connectToGame(){
       myDeposit=Object.values(allDeposits).filter(d=>d&&d.playerId===playerId).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]||null;
       renderDepositPanel();
       const me=message.data.players&&message.data.players[playerId];
+      myPlayerRecord=me||{};
+      myWithdrawals=Object.values(message.data.withdrawals||{}).filter(x=>x&&x.playerId===playerId);
+      renderWalletPanel();
       approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
       pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
       showCalledNumbers();
@@ -209,6 +236,13 @@ function connectToGame(){
   roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
   roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
 }
+document.getElementById("requestWithdrawal").addEventListener("click",()=>{
+ if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}
+ const amount=Number(document.getElementById("withdrawAmount").value),account=document.getElementById("withdrawAccount").value.trim(),method=document.getElementById("withdrawMethod").value;
+ if(!Number.isFinite(amount)||amount<=0||account.length<3){alert("Enter a valid amount and receiving account number.");return;}
+ roomSocket.send(JSON.stringify({type:"PLAYER_WITHDRAWAL_REQUEST",playerId,amount,method,account,currency:"ETB"}));
+ document.getElementById("withdrawalStatus").textContent="Withdrawal request sent. The Admin will review it.";
+});
 document.getElementById("submitDeposit").addEventListener("click",()=>{
  const reference=document.getElementById("depositReference").value.trim();
  if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}
