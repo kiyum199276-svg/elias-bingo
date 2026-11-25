@@ -187,7 +187,7 @@ export class BingoRoom {
       const account = String(data.account||"").trim().slice(0,100);
       if (!player || !Number.isFinite(amount) || amount <= 0 || !method || account.length < 3) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid amount, payment method, and account number"})); return; }
       const balance = Number(player.walletBalance)||0;
-      if (amount > balance) { sender.send(JSON.stringify({type:"ERROR",message:"Withdrawal amount exceeds your available balance"})); return; }
+      if (amount > balance) { sender.send(JSON.stringify({type:"ERROR",message:"Insufficient balance. Your available balance is "+balance.toFixed(2)+" ETB."})); return; }
       if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
       const id = crypto.randomUUID(); player.walletBalance = balance - amount;
       this.roomState.withdrawals[id] = {id,playerId,playerName:player.name,amount,currency:String(data.currency||"ETB").slice(0,8),method,account,status:"pending",createdAt:Date.now()};
