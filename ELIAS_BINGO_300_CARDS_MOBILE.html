@@ -38,11 +38,21 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 <header><h1>ELIAS BINGO</h1><p>የተጫዋች ካርድ</p></header>
 <main>
 <section class="panel">
+  <div style="display:grid;gap:8px;margin-bottom:12px">
+    <input id="gameIdInput" placeholder="Game ID / የጨዋታ መለያ" autocomplete="off" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <input id="playerNameInput" placeholder="Player name / የተጫዋች ስም" autocomplete="name" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <button id="connectBtn" type="button">Connect to game / ከጨዋታው ጋር ተገናኝ</button>
+    <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Not connected / አልተገናኘም</div>
+  </div>
   <div class="controls">
     <select id="cardSelect" aria-label="የካርድ ቁጥር"></select>
     <button id="showBtn" type="button">ካርዱን አሳይ</button>
   </div>
   <p class="help">የካርድ ቁጥርህን ምረጥ። ቁጥር ላይ በጣትህ ስትነካ ምልክት ይደረጋል፤ እንደገና ስትነካው ይሰረዛል።</p>
+</section>
+<section class="panel" style="margin-top:12px">
+  <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
+  <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
 </section>
 <div class="cardhead"><h2 id="cardTitle">ካርድ 1</h2><span id="status">ምልክት: 0</span></div>
 <section class="board" id="board" aria-label="Bingo card"></section>
@@ -50,7 +60,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <button class="secondary" id="clearBtn" type="button">የዚህን ካርድ ምልክት አጥፋ</button>
   <button id="fullBtn" type="button">Full Screen</button>
 </div>
-<p class="note">ምልክቶችህ በዚህ ስልክና Browser ላይ ብቻ ይቀመጣሉ። የAdmin የDraw ወይም CHECK ሁኔታን አይቀይሩም፤ ከሌሎች ስልኮች ጋርም በቀጥታ አይመሳሰሉም።</p>
+<p class="note">የካርድ ምልክቶች አሁንም በዚህ ስልክ ላይ ይቀመጣሉ። የAdmin ጥሪዎች ከተገናኙ በቀጥታ እዚህ ይታያሉ።</p>
 </main>
 <footer>ELIAS BINGO • 300 ካርዶች</footer>
 <script>
@@ -104,7 +114,51 @@ document.getElementById("clearBtn").addEventListener("click",()=>{
 document.getElementById("fullBtn").addEventListener("click",async()=>{
   try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(e){}
 });
+// Live room connection: the server stores the player's presence and streams called numbers.
+const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
+const gameInput=document.getElementById("gameIdInput");
+const nameInput=document.getElementById("playerNameInput");
+const connectBtn=document.getElementById("connectBtn");
+const connectionStatus=document.getElementById("connectionStatus");
+const calledNumbersEl=document.getElementById("calledNumbers");
+let roomSocket=null;
+let calledNumbers=[];
+const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
+let playerId=localStorage.getItem(PLAYER_ID_KEY);
+if(!playerId){playerId=(crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2));localStorage.setItem(PLAYER_ID_KEY,playerId)}
+try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.value=localStorage.getItem("eliasBingoPlayerNameV1")||""}catch(e){}
+function showCalledNumbers(){
+  calledNumbersEl.textContent=calledNumbers.length?calledNumbers.join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
+}
+function connectToGame(){
+  const gameId=gameInput.value.trim();
+  const playerName=nameInput.value.trim();
+  if(!gameId||!playerName){alert("Enter Game ID and player name / የጨዋታ መለያና ስም ያስገቡ");return}
+  if(roomSocket){try{roomSocket.close()}catch(e){}}
+  connectionStatus.textContent="Connecting... / በመገናኘት ላይ";
+  try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}
+  catch(e){connectionStatus.textContent="Connection failed / ግንኙነት አልተሳካም";return}
+  roomSocket.addEventListener("open",()=>{
+    localStorage.setItem("eliasBingoGameIdV1",gameId);
+    localStorage.setItem("eliasBingoPlayerNameV1",playerName);
+    connectionStatus.textContent="Connected / ተገናኝቷል";
+    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName,card:Number(select.value)||1}));
+  });
+  roomSocket.addEventListener("message",event=>{
+    let message;try{message=JSON.parse(event.data)}catch(e){return}
+    if(message.type==="ROOM_STATE"&&message.data){
+      calledNumbers=Array.isArray(message.data.calledNumbers)?message.data.calledNumbers:[];
+      showCalledNumbers();
+      if(message.data.players&&message.data.players[playerId])connectionStatus.textContent="Connected as "+playerName+" / ተገናኝቷል";
+    }
+    if(message.type==="ERROR")connectionStatus.textContent="Server: "+(message.message||"Error");
+  });
+  roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
+  roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
+}
+connectBtn.addEventListener("click",connectToGame);
 render();
+showCalledNumbers();
 </script>
 </body>
 </html>
