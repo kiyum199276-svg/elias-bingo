@@ -70,7 +70,20 @@ export class BingoRoom {
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
       const nums = Array.isArray(data.calledNumbers) ? data.calledNumbers.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 75).slice(-75) : [];
       const previousCalledNumbers = Array.isArray(this.roomState.calledNumbers) ? this.roomState.calledNumbers : [];
-      if (previousCalledNumbers.length > 0 && nums.length === 0) this.roomState.gameRound = (Number(this.roomState.gameRound) || 0) + 1;
+      const startingNextRound = previousCalledNumbers.length > 0 && nums.length === 0;
+      if (startingNextRound) {
+        this.roomState.gameRound = (Number(this.roomState.gameRound) || 0) + 1;
+        // Card reservations belong to one round only. Release every card
+        // and clear each player's round-specific card lists for the next round.
+        this.roomState.cards = {};
+        for (const player of Object.values(this.roomState.players || {})) {
+          player.approvedCards = [];
+          player.pendingCards = [];
+          player.selectedCards = [];
+          player.selectedCard = null;
+        }
+        this.roomState.claims = {};
+      }
       if (!Number.isFinite(Number(this.roomState.gameRound))) this.roomState.gameRound = 0;
       this.roomState.calledNumbers = [...new Set(nums)];
       this.roomState.pattern = typeof data.pattern === "string" ? data.pattern.slice(0, 32) : "";
