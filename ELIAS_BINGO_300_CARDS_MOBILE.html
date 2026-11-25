@@ -85,7 +85,7 @@ function render() {
     const marks=new Set(saved[String(cardNo)]||[]);
     const head=document.createElement("div");head.className="cardhead";
     const heading=document.createElement("h2");heading.textContent="ካርድ "+cardNo;
-    const count=document.createElement("span");count.style.cssText="font-size:12px;color:#526579";count.textContent="Marked: "+values.filter((value,index)=>value==="FREE"||marks.has(index)||calledNumbers.includes(Number(value))).length;
+    const count=document.createElement("span");count.style.cssText="font-size:12px;color:#526579";count.textContent="Marked: "+values.filter((value,index)=>value!=="FREE"&&(marks.has(index)||calledNumbers.includes(Number(value)))).length;
     head.append(heading,count);boardsContainer.appendChild(head);
     const cardBoard=document.createElement("section");cardBoard.className="board";cardBoard.setAttribute("aria-label","Bingo card "+cardNo);
     ["B","I","N","G","O"].forEach(letter=>{const el=document.createElement("div");el.className="cell letter";el.textContent=letter;cardBoard.appendChild(el);});
