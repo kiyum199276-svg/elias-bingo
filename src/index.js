@@ -75,11 +75,13 @@ export class BingoRoom {
     if (data.type === "JOIN_PLAYER") {
       const playerId = String(data.playerId || "").slice(0, 100);
       const name = String(data.name || "").trim().slice(0, 60);
-      const card = Number(data.card);
-      if (!playerId || !name || !Number.isInteger(card) || card < 1 || card > 300) {
-        sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and card are required" })); return;
+      const rawCards = Array.isArray(data.cards) ? data.cards : [data.card];
+      const cards = [...new Set(rawCards.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 300))].slice(0, 300);
+      if (!playerId || !name || cards.length === 0) {
+        sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and at least one card are required" })); return;
       }
-      this.roomState.players[playerId] = { name, selectedCard: card, status: "joined", joinedAt: this.roomState.players[playerId]?.joinedAt || Date.now() };
+      const previous = this.roomState.players[playerId] || {};
+      this.roomState.players[playerId] = { name, selectedCards: cards, selectedCard: cards[0], status: "joined", joinedAt: previous.joinedAt || Date.now() };
       await this.saveState();
       this.broadcast({ type: "ROOM_STATE", data: this.roomState });
       return;
