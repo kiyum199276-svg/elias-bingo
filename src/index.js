@@ -21,7 +21,7 @@ export class BingoRoom {
       this.roomState = await this.ctx.storage.get("roomState");
       this.adminToken = await this.ctx.storage.get("adminToken") || null;
       if (!this.roomState) {
-        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], pattern: "", patternMode: "auto", players: {}, cards: {}, updatedAt: Date.now() };
+        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], pattern: "", patternName: "", patternMode: "auto", players: {}, cards: {}, updatedAt: Date.now() };
         await this.ctx.storage.put("roomState", this.roomState);
       }
       if (!this.roomState.players) this.roomState.players = {};
@@ -70,6 +70,7 @@ export class BingoRoom {
       this.roomState.calledNumbers = [...new Set(nums)];
       this.roomState.pattern = typeof data.pattern === "string" ? data.pattern.slice(0, 32) : "";
       this.roomState.patternMode = data.patternMode === "manual" ? "manual" : "auto";
+      this.roomState.patternName = typeof data.patternName === "string" ? data.patternName.slice(0, 80) : "";
       await this.saveState();
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
       return;
@@ -81,7 +82,8 @@ export class BingoRoom {
       if (!player || !Array.isArray(player.selectedCards) || !player.selectedCards.includes(cardNumber)) {
         sender.send(JSON.stringify({type:"ERROR",message:"That card is not registered to this player in this room"})); return;
       }
-      this.broadcast({type:"BINGO_CLAIM",playerId,playerName:player.name,cardNumber,claimedAt:Date.now()});
+      const cardValues = Array.isArray(data.cardValues) && data.cardValues.length === 25 && data.cardValues.every(v => v === "FREE" || (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 75)) ? data.cardValues : null;
+      this.broadcast({type:"BINGO_CLAIM",playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,claimedAt:Date.now()});
       sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber}));
       return;
     }
