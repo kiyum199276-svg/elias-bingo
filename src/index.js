@@ -75,12 +75,35 @@ export class BingoRoom {
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
       return;
     }
+    if (data.type === "ADMIN_APPROVE_CARD" || data.type === "ADMIN_REJECT_CARD") {
+      let role = null;
+      try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const playerId = String(data.playerId || "").slice(0, 100);
+      const cardNumber = Number(data.cardNumber);
+      const player = this.roomState.players[playerId];
+      const owner = this.roomState.cards[String(cardNumber)];
+      if (!player || !Number.isInteger(cardNumber) || !Array.isArray(player.pendingCards) || !player.pendingCards.includes(cardNumber) || !owner || owner.playerId !== playerId || owner.status !== "pending") {
+        sender.send(JSON.stringify({type:"ERROR",message:"This card request is no longer pending"})); return;
+      }
+      player.pendingCards = player.pendingCards.filter(n => n !== cardNumber);
+      if (data.type === "ADMIN_APPROVE_CARD") {
+        player.approvedCards = [...new Set([...(player.approvedCards || []), cardNumber])].sort((a,b)=>a-b);
+        owner.status = "approved";
+      } else {
+        this.roomState.cards[String(cardNumber)] = null;
+      }
+      player.selectedCards = [...(player.approvedCards || [])];
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      return;
+    }
     if (data.type === "BINGO_CLAIM") {
       const playerId = String(data.playerId || "").slice(0, 100);
       const cardNumber = Number(data.cardNumber);
       const player = this.roomState.players[playerId];
-      if (!player || !Array.isArray(player.selectedCards) || !player.selectedCards.includes(cardNumber)) {
-        sender.send(JSON.stringify({type:"ERROR",message:"That card is not registered to this player in this room"})); return;
+      if (!player || !Array.isArray(player.approvedCards) || !player.approvedCards.includes(cardNumber)) {
+        sender.send(JSON.stringify({type:"ERROR",message:"This card has not been approved by the Admin"})); return;
       }
       const cardValues = Array.isArray(data.cardValues) && data.cardValues.length === 25 && data.cardValues.every(v => v === "FREE" || (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 75)) ? data.cardValues : null;
       this.broadcast({type:"BINGO_CLAIM",playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,claimedAt:Date.now()});
@@ -96,8 +119,19 @@ export class BingoRoom {
         sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and at least one card are required" })); return;
       }
       const previous = this.roomState.players[playerId] || {};
-      this.roomState.players[playerId] = { name, selectedCards: cards, selectedCard: cards[0], status: "joined", joinedAt: previous.joinedAt || Date.now() };
+      const approvedCards = Array.isArray(previous.approvedCards) ? previous.approvedCards : [];
+      const pendingCards = Array.isArray(previous.pendingCards) ? previous.pendingCards : [];
+      const unavailable = [];
+      for (const cardNumber of cards) {
+        if (approvedCards.includes(cardNumber) || pendingCards.includes(cardNumber)) continue;
+        const key = String(cardNumber), owner = this.roomState.cards[key];
+        if (owner && owner.playerId !== playerId) { unavailable.push(cardNumber); continue; }
+        this.roomState.cards[key] = { playerId, status: "pending" };
+        pendingCards.push(cardNumber);
+      }
+      this.roomState.players[playerId] = { name, approvedCards, pendingCards: [...new Set(pendingCards)].sort((a,b)=>a-b), selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
       await this.saveState();
+      sender.send(JSON.stringify({type:"CARD_REQUEST_RESULT",pendingCards:this.roomState.players[playerId].pendingCards,approvedCards,unavailable}));
       this.broadcast({ type: "ROOM_STATE", data: this.roomState });
       return;
     }
