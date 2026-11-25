@@ -74,12 +74,12 @@ const board=document.getElementById("board");
 const title=document.getElementById("cardTitle");
 const status=document.getElementById("status");
 let current=1;
-let selectedCards=[1];
+let selectedCards=[];
 let saved={};
 try{saved=JSON.parse(localStorage.getItem(STORE_KEY)||"{}")||{}}catch(e){saved={}}
 for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=String(n);opt.textContent="ካርድ "+n;select.appendChild(opt)}
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
-function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent="Selected cards: "+selectedCards.join(", ");}
+function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";}
 document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();}else{alert("Card "+n+" is already selected.");}});
 function render() {
   current=Number(select.value)||1;
@@ -139,6 +139,7 @@ function connectToGame(){
   const gameId=gameInput.value.trim();
   const playerName=nameInput.value.trim();
   if(!gameId||!playerName){alert("Enter Game ID and player name / የጨዋታ መለያና ስም ያስገቡ");return}
+  if(selectedCards.length===0){selectedCards=[Number(select.value)||1];updateSelectedCards();}
   if(roomSocket){try{roomSocket.close()}catch(e){}}
   connectionStatus.textContent="Connecting... / በመገናኘት ላይ";
   try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}
