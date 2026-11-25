@@ -21,7 +21,7 @@ export class BingoRoom {
       this.roomState = await this.ctx.storage.get("roomState");
       this.adminToken = await this.ctx.storage.get("adminToken") || null;
       if (!this.roomState) {
-        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], pattern: "", patternName: "", patternMode: "auto", players: {}, cards: {}, updatedAt: Date.now() };
+        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], pattern: "", patternName: "", patternMode: "auto", depositConfig: {enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""}, deposits: {}, players: {}, cards: {}, updatedAt: Date.now() };
         await this.ctx.storage.put("roomState", this.roomState);
       }
       if (!this.roomState.players) this.roomState.players = {};
@@ -75,6 +75,57 @@ export class BingoRoom {
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
       return;
     }
+    if (data.type === "ADMIN_SET_DEPOSIT_CONFIG") {
+      let role = null;
+      try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const enabled = data.enabled === true;
+      const amount = Number(data.amount);
+      const currency = String(data.currency || "ETB").slice(0, 8);
+      const method = ["Telebirr","CBE Birr","E-Birr"].includes(data.method) ? data.method : "Telebirr";
+      const account = String(data.account || "").trim().slice(0, 100);
+      if (enabled && (!Number.isFinite(amount) || amount <= 0 || !account)) {
+        sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid deposit amount and payment account"})); return;
+      }
+      this.roomState.depositConfig = {enabled,amount:enabled?amount:0,currency,method,account};
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"DEPOSIT_CONFIG_SAVED"}));
+      return;
+    }
+    if (data.type === "DEPOSIT_REQUEST") {
+      const playerId = String(data.playerId || "").slice(0, 100);
+      const player = this.roomState.players[playerId];
+      const config = this.roomState.depositConfig || {enabled:false};
+      const reference = String(data.reference || "").trim().slice(0, 100);
+      if (!player || !config.enabled) { sender.send(JSON.stringify({type:"ERROR",message:"Deposit is not enabled or player is not connected"})); return; }
+      if (reference.length < 3) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid payment reference"})); return; }
+      const duplicate = Object.values(this.roomState.deposits || {}).some(d => d && d.reference === reference && d.status !== "rejected");
+      if (duplicate) { sender.send(JSON.stringify({type:"ERROR",message:"This payment reference has already been submitted"})); return; }
+      const id = crypto.randomUUID();
+      this.roomState.deposits[id] = {id,playerId,playerName:player.name,reference,amount:config.amount,currency:config.currency,method:config.method,status:"pending",createdAt:Date.now()};
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"DEPOSIT_REQUEST_RECEIVED",depositId:id}));
+      return;
+    }
+    if (data.type === "ADMIN_REVIEW_DEPOSIT") {
+      let role = null;
+      try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const id = String(data.depositId || "");
+      const deposit = this.roomState.deposits && this.roomState.deposits[id];
+      const decision = data.decision === "approved" ? "approved" : data.decision === "rejected" ? "rejected" : "";
+      if (!deposit || deposit.status !== "pending" || !decision) { sender.send(JSON.stringify({type:"ERROR",message:"Deposit request is not pending"})); return; }
+      deposit.status = decision;
+      deposit.reviewedAt = Date.now();
+      const player = this.roomState.players[deposit.playerId];
+      if (player && decision === "approved") player.depositApproved = true;
+      if (player && decision === "rejected") player.depositApproved = false;
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      return;
+    }
     if (data.type === "ADMIN_APPROVE_CARD" || data.type === "ADMIN_REJECT_CARD") {
       let role = null;
       try { role = sender.deserializeAttachment()?.role; } catch {}
@@ -83,6 +134,9 @@ export class BingoRoom {
       const cardNumber = Number(data.cardNumber);
       const player = this.roomState.players[playerId];
       const owner = this.roomState.cards[String(cardNumber)];
+      if (data.type === "ADMIN_APPROVE_CARD" && this.roomState.depositConfig?.enabled && !player?.depositApproved) {
+        sender.send(JSON.stringify({type:"ERROR",message:"Approve the player's deposit before approving cards"})); return;
+      }
       if (!player || !Number.isInteger(cardNumber) || !Array.isArray(player.pendingCards) || !player.pendingCards.includes(cardNumber) || !owner || owner.playerId !== playerId || owner.status !== "pending") {
         sender.send(JSON.stringify({type:"ERROR",message:"This card request is no longer pending"})); return;
       }
@@ -119,6 +173,8 @@ export class BingoRoom {
         sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and at least one card are required" })); return;
       }
       const previous = this.roomState.players[playerId] || {};
+      if (!this.roomState.deposits) this.roomState.deposits = {};
+      if (!this.roomState.depositConfig) this.roomState.depositConfig = {enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""};
       const approvedCards = Array.isArray(previous.approvedCards) ? previous.approvedCards : [];
       const pendingCards = Array.isArray(previous.pendingCards) ? previous.pendingCards : [];
       const unavailable = [];
