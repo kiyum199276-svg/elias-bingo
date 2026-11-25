@@ -52,6 +52,13 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <div id="selectedCards" class="help">Selected cards: 1</div>
   <p class="help">የካርድ ቁጥርህን ምረጥ። ቁጥር ላይ በጣትህ ስትነካ ምልክት ይደረጋል፤ እንደገና ስትነካው ይሰረዛል።</p>
 </section>
+<section class="panel" id="depositPanel" style="margin-top:12px" hidden>
+  <strong>Deposit / የቅድሚያ ክፍያ</strong>
+  <div id="depositDetails" class="help"></div>
+  <input id="depositReference" placeholder="Payment Transaction ID / Reference" style="width:100%;margin-top:10px;padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+  <button id="submitDeposit" type="button" style="width:100%;margin-top:8px">Submit payment reference</button>
+  <div id="depositStatus" class="help">Connect to see deposit requirements.</div>
+</section>
 <section class="panel" style="margin-top:12px">
   <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
   <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
@@ -136,12 +143,23 @@ let calledNumbers=[];
 let winningPattern="";
 let winningPatternMode="auto";
 let winningPatternName="";
+let depositConfig={enabled:false};
+let myDeposit=null;
 let approvedCards=[];
 let pendingCards=[];
 const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
 let playerId=localStorage.getItem(PLAYER_ID_KEY);
 if(!playerId){playerId=(crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2));localStorage.setItem(PLAYER_ID_KEY,playerId)}
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.value=localStorage.getItem("eliasBingoPlayerNameV1")||""}catch(e){}
+function renderDepositPanel(){
+ const panel=document.getElementById("depositPanel"),details=document.getElementById("depositDetails"),status=document.getElementById("depositStatus"),input=document.getElementById("depositReference"),button=document.getElementById("submitDeposit");
+ panel.hidden=false;
+ if(!depositConfig.enabled){details.textContent="No deposit is required for this game.";status.textContent="You can request cards. Admin approval is still required.";input.hidden=true;button.hidden=true;return;}
+ input.hidden=false;button.hidden=false;
+ details.textContent="Pay "+depositConfig.amount+" "+depositConfig.currency+" using "+depositConfig.method+" to account: "+depositConfig.account+". After paying, enter your transaction reference below.";
+ if(myDeposit){status.textContent="Deposit status: "+myDeposit.status.toUpperCase()+" • Reference: "+myDeposit.reference;if(myDeposit.status==="pending"||myDeposit.status==="approved"){input.disabled=true;button.disabled=true;return;}}
+ input.disabled=false;button.disabled=false;
+}
 function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
   calledNumbersEl.textContent=calledNumbers.length?calledNumbers.map(numberLabel).join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
@@ -168,6 +186,10 @@ function connectToGame(){
       winningPattern=typeof message.data.pattern==="string"?message.data.pattern:"";
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
+      depositConfig=message.data.depositConfig||{enabled:false};
+      const allDeposits=message.data.deposits||{};
+      myDeposit=Object.values(allDeposits).filter(d=>d&&d.playerId===playerId).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]||null;
+      renderDepositPanel();
       const me=message.data.players&&message.data.players[playerId];
       approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
       pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
@@ -187,6 +209,13 @@ function connectToGame(){
   roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
   roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
 }
+document.getElementById("submitDeposit").addEventListener("click",()=>{
+ const reference=document.getElementById("depositReference").value.trim();
+ if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}
+ if(reference.length<3){alert("Enter your payment transaction reference.");return;}
+ roomSocket.send(JSON.stringify({type:"DEPOSIT_REQUEST",playerId,reference}));
+ document.getElementById("depositStatus").textContent="Sending payment reference…";
+});
 connectBtn.addEventListener("click",connectToGame);
 render();
 updateSelectedCards();
