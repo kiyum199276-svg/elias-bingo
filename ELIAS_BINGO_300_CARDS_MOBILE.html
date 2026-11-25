@@ -85,13 +85,13 @@ function render() {
     const marks=new Set(saved[String(cardNo)]||[]);
     const head=document.createElement("div");head.className="cardhead";
     const heading=document.createElement("h2");heading.textContent="ካርድ "+cardNo;
-    const count=document.createElement("span");count.style.cssText="font-size:12px;color:#526579";count.textContent="ምልክት: "+marks.size;
+    const count=document.createElement("span");count.style.cssText="font-size:12px;color:#526579";count.textContent="Marked: "+values.filter((value,index)=>value==="FREE"||marks.has(index)||calledNumbers.includes(Number(value))).length;
     head.append(heading,count);boardsContainer.appendChild(head);
     const cardBoard=document.createElement("section");cardBoard.className="board";cardBoard.setAttribute("aria-label","Bingo card "+cardNo);
     ["B","I","N","G","O"].forEach(letter=>{const el=document.createElement("div");el.className="cell letter";el.textContent=letter;cardBoard.appendChild(el);});
     values.forEach((value,index)=>{
       const el=document.createElement("div");const isFree=value==="FREE";
-      el.className="cell"+(isFree?" free":(marks.has(index)?" marked":""));el.textContent=isFree?"FREE":String(value);
+      el.className="cell"+(isFree?" free":(marks.has(index)||calledNumbers.includes(Number(value))?" marked":""));el.textContent=isFree?"FREE":String(value);
       if(!isFree){el.setAttribute("role","button");el.setAttribute("aria-label","Card "+cardNo+", number "+value);el.setAttribute("aria-pressed",marks.has(index)?"true":"false");
         el.addEventListener("click",()=>{const now=new Set(saved[String(cardNo)]||[]);if(now.has(index))now.delete(index);else now.add(index);saved[String(cardNo)]=Array.from(now).sort((a,b)=>a-b);save();render();});
       }
@@ -122,8 +122,9 @@ const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
 let playerId=localStorage.getItem(PLAYER_ID_KEY);
 if(!playerId){playerId=(crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2));localStorage.setItem(PLAYER_ID_KEY,playerId)}
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.value=localStorage.getItem("eliasBingoPlayerNameV1")||""}catch(e){}
+function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
-  calledNumbersEl.textContent=calledNumbers.length?calledNumbers.join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
+  calledNumbersEl.textContent=calledNumbers.length?calledNumbers.map(numberLabel).join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
 }
 function connectToGame(){
   const gameId=gameInput.value.trim();
@@ -145,6 +146,7 @@ function connectToGame(){
     if(message.type==="ROOM_STATE"&&message.data){
       calledNumbers=Array.isArray(message.data.calledNumbers)?message.data.calledNumbers:[];
       showCalledNumbers();
+      render();
       if(message.data.players&&message.data.players[playerId])connectionStatus.textContent="Connected as "+playerName+" / ተገናኝቷል";
     }
     if(message.type==="ERROR")connectionStatus.textContent="Server: "+(message.message||"Error");
