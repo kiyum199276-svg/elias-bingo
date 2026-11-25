@@ -69,6 +69,9 @@ export class BingoRoom {
       try { role = sender.deserializeAttachment()?.role; } catch {}
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
       const nums = Array.isArray(data.calledNumbers) ? data.calledNumbers.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 75).slice(-75) : [];
+      const previousCalledNumbers = Array.isArray(this.roomState.calledNumbers) ? this.roomState.calledNumbers : [];
+      if (previousCalledNumbers.length > 0 && nums.length === 0) this.roomState.gameRound = (Number(this.roomState.gameRound) || 0) + 1;
+      if (!Number.isFinite(Number(this.roomState.gameRound))) this.roomState.gameRound = 0;
       this.roomState.calledNumbers = [...new Set(nums)];
       this.roomState.pattern = typeof data.pattern === "string" ? data.pattern.slice(0, 32) : "";
       this.roomState.patternMode = data.patternMode === "manual" ? "manual" : "auto";
