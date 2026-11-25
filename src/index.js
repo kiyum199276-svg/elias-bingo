@@ -21,7 +21,7 @@ export class BingoRoom {
       this.roomState = await this.ctx.storage.get("roomState");
       this.adminToken = await this.ctx.storage.get("adminToken") || null;
       if (!this.roomState) {
-        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], players: {}, cards: {}, updatedAt: Date.now() };
+        this.roomState = { gameId: null, status: "waiting", calledNumbers: [], pattern: "", patternMode: "auto", players: {}, cards: {}, updatedAt: Date.now() };
         await this.ctx.storage.put("roomState", this.roomState);
       }
       if (!this.roomState.players) this.roomState.players = {};
@@ -68,8 +68,21 @@ export class BingoRoom {
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
       const nums = Array.isArray(data.calledNumbers) ? data.calledNumbers.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 75).slice(-75) : [];
       this.roomState.calledNumbers = [...new Set(nums)];
+      this.roomState.pattern = typeof data.pattern === "string" ? data.pattern.slice(0, 32) : "";
+      this.roomState.patternMode = data.patternMode === "manual" ? "manual" : "auto";
       await this.saveState();
       this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      return;
+    }
+    if (data.type === "BINGO_CLAIM") {
+      const playerId = String(data.playerId || "").slice(0, 100);
+      const cardNumber = Number(data.cardNumber);
+      const player = this.roomState.players[playerId];
+      if (!player || !Array.isArray(player.selectedCards) || !player.selectedCards.includes(cardNumber)) {
+        sender.send(JSON.stringify({type:"ERROR",message:"That card is not registered to this player in this room"})); return;
+      }
+      this.broadcast({type:"BINGO_CLAIM",playerId,playerName:player.name,cardNumber,claimedAt:Date.now()});
+      sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber}));
       return;
     }
     if (data.type === "JOIN_PLAYER") {
