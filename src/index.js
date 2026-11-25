@@ -26,6 +26,8 @@ export class BingoRoom {
       }
       if (!this.roomState.players) this.roomState.players = {};
       if (!this.roomState.cards) this.roomState.cards = {};
+      if (!this.roomState.claims) this.roomState.claims = {};
+      if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
     });
   }
 
@@ -160,9 +162,53 @@ export class BingoRoom {
         sender.send(JSON.stringify({type:"ERROR",message:"This card has not been approved by the Admin"})); return;
       }
       const cardValues = Array.isArray(data.cardValues) && data.cardValues.length === 25 && data.cardValues.every(v => v === "FREE" || (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 75)) ? data.cardValues : null;
-      this.broadcast({type:"BINGO_CLAIM",playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,claimedAt:Date.now()});
-      sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber}));
+      if (!this.roomState.claims) this.roomState.claims = {};
+      const claimId = crypto.randomUUID();
+      this.roomState.claims[claimId] = {claimId,playerId,playerName:player.name,cardNumber,status:"pending",claimedAt:Date.now()};
+      await this.saveState();
+      this.broadcast({type:"BINGO_CLAIM",claimId,playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,claimedAt:Date.now()});
+      sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber,claimId}));
       return;
+    }
+    if (data.type === "ADMIN_CONFIRM_WINNER") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const claimId = String(data.claimId || ""), claim = this.roomState.claims && this.roomState.claims[claimId], amount = Number(data.amount);
+      if (!claim || claim.status !== "pending" || !Number.isFinite(amount) || amount <= 0) { sender.send(JSON.stringify({type:"ERROR",message:"Pending claim or valid prize amount not found"})); return; }
+      const player = this.roomState.players[claim.playerId];
+      if (!player) { sender.send(JSON.stringify({type:"ERROR",message:"Winner is no longer in this game"})); return; }
+      player.walletBalance = (Number(player.walletBalance)||0) + amount;
+      claim.status = "confirmed"; claim.prizeAmount = amount; claim.currency = String(data.currency||"ETB").slice(0,8); claim.confirmedAt = Date.now();
+      await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
+    }
+    if (data.type === "PLAYER_WITHDRAWAL_REQUEST") {
+      const playerId = String(data.playerId||"").slice(0,100), player = this.roomState.players[playerId], amount = Number(data.amount);
+      const method = ["Telebirr","CBE Birr","E-Birr"].includes(data.method) ? data.method : "";
+      const account = String(data.account||"").trim().slice(0,100);
+      if (!player || !Number.isFinite(amount) || amount <= 0 || !method || account.length < 3) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid amount, payment method, and account number"})); return; }
+      const balance = Number(player.walletBalance)||0;
+      if (amount > balance) { sender.send(JSON.stringify({type:"ERROR",message:"Withdrawal amount exceeds your available balance"})); return; }
+      if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
+      const id = crypto.randomUUID(); player.walletBalance = balance - amount;
+      this.roomState.withdrawals[id] = {id,playerId,playerName:player.name,amount,currency:String(data.currency||"ETB").slice(0,8),method,account,status:"pending",createdAt:Date.now()};
+      await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); sender.send(JSON.stringify({type:"WITHDRAWAL_REQUEST_RECEIVED",withdrawalId:id})); return;
+    }
+    if (data.type === "ADMIN_REVIEW_WITHDRAWAL") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const id = String(data.withdrawalId||""), item = this.roomState.withdrawals && this.roomState.withdrawals[id];
+      const decision = data.decision === "approved" ? "approved" : data.decision === "rejected" ? "rejected" : "";
+      if (!item || item.status !== "pending" || !decision) { sender.send(JSON.stringify({type:"ERROR",message:"Withdrawal request is not pending"})); return; }
+      item.status = decision; item.reviewedAt = Date.now();
+      if (decision === "rejected") { const player = this.roomState.players[item.playerId]; if (player) player.walletBalance = (Number(player.walletBalance)||0) + item.amount; }
+      await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
+    }
+    if (data.type === "ADMIN_MARK_WITHDRAWAL_PAID") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const item = this.roomState.withdrawals && this.roomState.withdrawals[String(data.withdrawalId||"")];
+      if (!item || item.status !== "approved") { sender.send(JSON.stringify({type:"ERROR",message:"Only approved withdrawals can be marked paid"})); return; }
+      item.status = "paid"; item.paidAt = Date.now(); await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
     }
     if (data.type === "JOIN_PLAYER") {
       const playerId = String(data.playerId || "").slice(0, 100);
@@ -175,6 +221,8 @@ export class BingoRoom {
       const previous = this.roomState.players[playerId] || {};
       if (!this.roomState.deposits) this.roomState.deposits = {};
       if (!this.roomState.depositConfig) this.roomState.depositConfig = {enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""};
+      if (!this.roomState.claims) this.roomState.claims = {};
+      if (!this.roomState.withdrawals) this.roomState.withdrawals = {};
       const approvedCards = Array.isArray(previous.approvedCards) ? previous.approvedCards : [];
       const pendingCards = Array.isArray(previous.pendingCards) ? previous.pendingCards : [];
       const unavailable = [];
@@ -185,7 +233,7 @@ export class BingoRoom {
         this.roomState.cards[key] = { playerId, status: "pending" };
         pendingCards.push(cardNumber);
       }
-      this.roomState.players[playerId] = { name, approvedCards, pendingCards: [...new Set(pendingCards)].sort((a,b)=>a-b), selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
+      this.roomState.players[playerId] = { ...previous, name, walletBalance: Number(previous.walletBalance)||0, approvedCards, pendingCards: [...new Set(pendingCards)].sort((a,b)=>a-b), selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
       await this.saveState();
       sender.send(JSON.stringify({type:"CARD_REQUEST_RESULT",pendingCards:this.roomState.players[playerId].pendingCards,approvedCards,unavailable}));
       this.broadcast({ type: "ROOM_STATE", data: this.roomState });
