@@ -49,7 +49,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
     <button id="showBtn" type="button">ካርዱን አሳይ</button>
     <button id="addCardBtn" type="button">Add card</button>
   </div>
-  <div id="selectedCards" class="help">Selected cards: 1</div>
+  <div id="selectedCards" class="help">Selected cards: 1</div><div id="cardPurchaseInfo" class="help">Connect to see card price and wallet balance.</div><button id="purchaseCardsBtn" type="button" style="width:100%;margin:8px 0;padding:12px;border:0;border-radius:10px;background:#16865d;color:white;font-weight:bold">Confirm purchase</button><div id="purchaseStatus" class="help" role="status"></div>
   <p class="help">የካርድ ቁጥርህን ምረጥ። ቁጥር ላይ በጣትህ ስትነካ ምልክት ይደረጋል፤ እንደገና ስትነካው ይሰረዛል።</p>
 </section>
 <section class="panel" id="depositPanel" style="margin-top:12px" hidden>
@@ -93,7 +93,7 @@ try{saved=JSON.parse(localStorage.getItem(STORE_KEY)||"{}")||{}}catch(e){saved={
 for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=String(n);opt.textContent="ካርድ "+n;select.appendChild(opt)}
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
 document.getElementById("clearAllMarks").addEventListener("click",()=>{if(!confirm("Clear all your marked numbers on every card?"))return;saved={};save();render();});
-function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";}
+function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";const info=document.getElementById("cardPurchaseInfo");if(info)info.textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");}
 document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();render();}else{alert("Card "+n+" is already selected.");}});
 const PATTERN_NAMES={"6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any Line","2v2h":"2 Up + 2 Row","3v3h":"3 Up + 3 Row","different":"4 Different Lines","blackout":"Blackout","fourcorners":"Four Corners","xpattern":"X Pattern","plus":"Plus / Cross","topbottom":"Top + Bottom","frame":"Outside Frame","innerbox":"Inner Box","postage":"Postage Stamp"};
 const PATTERN_CELLS={"blackout":[...Array(25).keys()],"fourcorners":[0,4,20,24],"xpattern":[0,6,12,18,24,4,8,16,20],"plus":[2,7,10,11,12,13,14,17,22],"topbottom":[0,1,2,3,4,20,21,22,23,24],"frame":[0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24],"innerbox":[6,7,8,11,13,16,17,18]};
@@ -105,7 +105,7 @@ function render() {
   boardsContainer.innerHTML="";
   if(!cardsToShow.length){
     const info=document.createElement("div");info.className="panel";
-    info.textContent=pendingCards.length?"Card request pending Admin approval: "+pendingCards.join(", "):"Choose one or more cards and connect. Your cards will appear here after the Admin approves them.";
+    info.textContent="Choose cards above, then confirm purchase. Purchased cards appear here immediately.";
     boardsContainer.appendChild(info);
     return;
   }
@@ -157,6 +157,7 @@ let winningPattern="";
 let winningPatternMode="auto";
 let winningPatternName="";
 let depositConfig={enabled:false};
+let cardPrice=0;
 let myDeposit=null;
 let myPlayerRecord=null;
 let myWithdrawals=[];
@@ -169,7 +170,7 @@ try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.val
 function renderDepositPanel(){
  const panel=document.getElementById("depositPanel"),details=document.getElementById("depositDetails"),status=document.getElementById("depositStatus"),input=document.getElementById("depositReference"),button=document.getElementById("submitDeposit");
  panel.hidden=false;
- if(!depositConfig.enabled){details.textContent="No deposit is required for this game.";status.textContent="You can request cards. Admin approval is still required.";input.hidden=true;button.hidden=true;return;}
+ if(!depositConfig.enabled){details.textContent="No deposit is required for this game.";status.textContent="You can purchase cards after adding wallet balance.";input.hidden=true;button.hidden=true;return;}
  input.hidden=false;button.hidden=false;
  details.textContent="Pay "+depositConfig.amount+" "+depositConfig.currency+" using "+depositConfig.method+" to account: "+depositConfig.account+". After paying, enter your transaction reference below.";
  if(myDeposit){status.textContent="Deposit status: "+myDeposit.status.toUpperCase()+" • Reference: "+myDeposit.reference;if(myDeposit.status==="pending"||myDeposit.status==="approved"){input.disabled=true;button.disabled=true;return;}}
@@ -193,7 +194,7 @@ function connectToGame(){
   const gameId=gameInput.value.trim();
   const playerName=nameInput.value.trim();
   if(!gameId||!playerName){alert("Enter Game ID and player name / የጨዋታ መለያና ስም ያስገቡ");return}
-  if(selectedCards.length===0){selectedCards=[Number(select.value)||1];updateSelectedCards();}
+  
   if(roomSocket){try{roomSocket.close()}catch(e){}}
   connectionStatus.textContent="Connecting... / በመገናኘት ላይ";
   try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}
@@ -202,7 +203,7 @@ function connectToGame(){
     localStorage.setItem("eliasBingoGameIdV1",gameId);
     localStorage.setItem("eliasBingoPlayerNameV1",playerName);
     connectionStatus.textContent="Connected / ተገናኝቷል";
-    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName,cards:selectedCards}));
+    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName}));
   });
   roomSocket.addEventListener("message",event=>{
     let message;try{message=JSON.parse(event.data)}catch(e){return}
@@ -218,6 +219,8 @@ function connectToGame(){
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
       depositConfig=message.data.depositConfig||{enabled:false};
+      cardPrice=Number(message.data.cardPrice)||0;
+      document.getElementById("cardPurchaseInfo").textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");
       const allDeposits=message.data.deposits||{};
       myDeposit=Object.values(allDeposits).filter(d=>d&&d.playerId===playerId).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]||null;
       renderDepositPanel();
@@ -231,14 +234,15 @@ function connectToGame(){
       render();
       if(message.data.players&&message.data.players[playerId])connectionStatus.textContent="Connected as "+playerName+" / ተገናኝቷል";
     }
+    if(message.type==="CARD_PURCHASE_SUCCESS"){document.getElementById("purchaseStatus").textContent="Purchase successful: cards "+message.cards.join(", ")+" • Paid "+Number(message.total).toFixed(2)+" ETB. Balance: "+Number(message.balance).toFixed(2)+" ETB.";selectedCards=[];updateSelectedCards();render();}
     if(message.type==="CARD_REQUEST_RESULT"){
       pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];
       approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];
       const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];
-      connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request sent. Waiting for Admin approval.";
+      connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";
       render();
     }
-    if(message.type==="ERROR"){connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
+    if(message.type==="ERROR"){document.getElementById("purchaseStatus").textContent=message.message||"Error";connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
   });
   roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
   roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
@@ -249,6 +253,17 @@ document.getElementById("requestWithdrawal").addEventListener("click",()=>{
  if(!Number.isFinite(amount)||amount<=0||account.length<3){alert("Enter a valid amount and receiving account number.");return;} const available=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0; if(amount>available){document.getElementById("withdrawalStatus").textContent="Insufficient balance. Your available balance is "+available.toFixed(2)+" ETB.";return;}
  roomSocket.send(JSON.stringify({type:"PLAYER_WITHDRAWAL_REQUEST",playerId,amount,method,account,currency:"ETB"}));
  document.getElementById("withdrawalStatus").textContent="Withdrawal request sent. The Admin will review it.";
+});
+document.getElementById("purchaseCardsBtn").addEventListener("click",()=>{
+ if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){document.getElementById("purchaseStatus").textContent="Connect to the game first.";return;}
+ if(!selectedCards.length){document.getElementById("purchaseStatus").textContent="Select at least one card first.";return;}
+ if(!(cardPrice>0)){document.getElementById("purchaseStatus").textContent="The Admin has not set a card price yet.";return;}
+ const total=cardPrice*selectedCards.length,balance=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0;
+ if(balance<total){document.getElementById("purchaseStatus").textContent="Insufficient balance. Need "+total.toFixed(2)+" ETB; available "+balance.toFixed(2)+" ETB.";return;}
+ if(!confirm("Buy "+selectedCards.length+" card(s) for "+total.toFixed(2)+" ETB?"))return;
+ document.getElementById("purchaseCardsBtn").disabled=true;document.getElementById("purchaseStatus").textContent="Processing purchase…";
+ roomSocket.send(JSON.stringify({type:"PLAYER_PURCHASE_CARDS",playerId,cards:selectedCards}));
+ setTimeout(()=>{document.getElementById("purchaseCardsBtn").disabled=false;},1500);
 });
 document.getElementById("submitDeposit").addEventListener("click",()=>{
  const reference=document.getElementById("depositReference").value.trim();
