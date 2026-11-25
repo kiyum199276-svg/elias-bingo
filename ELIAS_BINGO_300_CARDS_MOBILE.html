@@ -75,7 +75,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
   <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
 </section>
-<div id="winningPattern" class="pattern-banner" hidden></div><div id="cardBoards"></div>
+<div id="winningPattern" class="pattern-banner" hidden></div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
 <div class="actions"><button id="fullBtn" type="button">Full Screen</button></div>
 <p class="note">የካርድ ምልክቶች አሁንም በዚህ ስልክ ላይ ይቀመጣሉ። የAdmin ጥሪዎች ከተገናኙ በቀጥታ እዚህ ይታያሉ።</p>
 </main>
@@ -92,6 +92,7 @@ let saved={};
 try{saved=JSON.parse(localStorage.getItem(STORE_KEY)||"{}")||{}}catch(e){saved={}}
 for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=String(n);opt.textContent="ካርድ "+n;select.appendChild(opt)}
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
+document.getElementById("clearAllMarks").addEventListener("click",()=>{if(!confirm("Clear all your marked numbers on every card?"))return;saved={};save();render();});
 function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";}
 document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();render();}else{alert("Card "+n+" is already selected.");}});
 const PATTERN_NAMES={"6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any Line","2v2h":"2 Up + 2 Row","3v3h":"3 Up + 3 Row","different":"4 Different Lines","blackout":"Blackout","fourcorners":"Four Corners","xpattern":"X Pattern","plus":"Plus / Cross","topbottom":"Top + Bottom","frame":"Outside Frame","innerbox":"Inner Box","postage":"Postage Stamp"};
@@ -207,6 +208,12 @@ function connectToGame(){
     let message;try{message=JSON.parse(event.data)}catch(e){return}
     if(message.type==="ROOM_STATE"&&message.data){
       calledNumbers=Array.isArray(message.data.calledNumbers)?message.data.calledNumbers:[];
+      const roundGameId=gameInput.value.trim();
+      const roundKey="eliasBingoRoundV1:"+roundGameId;
+      const incomingRound=Number(message.data.gameRound)||0;
+      const previousRound=localStorage.getItem(roundKey);
+      if(previousRound!==null && Number(previousRound)!==incomingRound){saved={};save();}
+      localStorage.setItem(roundKey,String(incomingRound));
       winningPattern=typeof message.data.pattern==="string"?message.data.pattern:"";
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
