@@ -64,6 +64,25 @@ export class BingoRoom {
       sender.send(JSON.stringify({type:"ADMIN_AUTH_OK"}));
       return;
     }
+    if (data.type === "ADMIN_START_NEW_ROUND") {
+      let role = null;
+      try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      this.roomState.gameRound = (Number(this.roomState.gameRound) || 0) + 1;
+      this.roomState.calledNumbers = [];
+      this.roomState.cards = {};
+      for (const player of Object.values(this.roomState.players || {})) {
+        player.approvedCards = [];
+        player.pendingCards = [];
+        player.selectedCards = [];
+        player.selectedCard = null;
+      }
+      this.roomState.claims = {};
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"NEW_ROUND_STARTED",gameRound:this.roomState.gameRound}));
+      return;
+    }
     if (data.type === "ADMIN_SYNC_STATE") {
       let role = null;
       try { role = sender.deserializeAttachment()?.role; } catch {}
