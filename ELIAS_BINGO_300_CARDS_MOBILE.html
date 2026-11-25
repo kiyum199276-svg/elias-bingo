@@ -47,7 +47,9 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <div class="controls">
     <select id="cardSelect" aria-label="የካርድ ቁጥር"></select>
     <button id="showBtn" type="button">ካርዱን አሳይ</button>
+    <button id="addCardBtn" type="button">Add card</button>
   </div>
+  <div id="selectedCards" class="help">Selected cards: 1</div>
   <p class="help">የካርድ ቁጥርህን ምረጥ። ቁጥር ላይ በጣትህ ስትነካ ምልክት ይደረጋል፤ እንደገና ስትነካው ይሰረዛል።</p>
 </section>
 <section class="panel" style="margin-top:12px">
@@ -72,10 +74,13 @@ const board=document.getElementById("board");
 const title=document.getElementById("cardTitle");
 const status=document.getElementById("status");
 let current=1;
+let selectedCards=[1];
 let saved={};
 try{saved=JSON.parse(localStorage.getItem(STORE_KEY)||"{}")||{}}catch(e){saved={}}
 for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=String(n);opt.textContent="ካርድ "+n;select.appendChild(opt)}
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
+function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent="Selected cards: "+selectedCards.join(", ");}
+document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();}else{alert("Card "+n+" is already selected.");}});
 function render() {
   current=Number(select.value)||1;
   const values=DECK[String(current)];
@@ -142,7 +147,7 @@ function connectToGame(){
     localStorage.setItem("eliasBingoGameIdV1",gameId);
     localStorage.setItem("eliasBingoPlayerNameV1",playerName);
     connectionStatus.textContent="Connected / ተገናኝቷል";
-    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName,card:Number(select.value)||1}));
+    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName,cards:selectedCards}));
   });
   roomSocket.addEventListener("message",event=>{
     let message;try{message=JSON.parse(event.data)}catch(e){return}
@@ -158,6 +163,7 @@ function connectToGame(){
 }
 connectBtn.addEventListener("click",connectToGame);
 render();
+updateSelectedCards();
 showCalledNumbers();
 </script>
 </body>
