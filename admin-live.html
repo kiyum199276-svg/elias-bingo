@@ -28,7 +28,7 @@ function connect(){
  status.textContent="Connecting room "+input.value+"…";
  socket=new WebSocket(SERVER+encodeURIComponent(input.value));
  socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));status.textContent="Connected. Share Game ID: "+input.value;});
- socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}if(m.type==="ADMIN_AUTH_OK"){status.textContent="Admin connected • Game ID: "+input.value;sync();}if(m.type==="ERROR")status.textContent="Server: "+m.message;});
+ socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}if(m.type==="ADMIN_AUTH_OK"){status.textContent="Admin connected • Game ID: "+input.value;sync();}if(m.type==="BINGO_CLAIM")status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber;if(m.type==="ERROR")status.textContent="Server: "+m.message;});
  socket.addEventListener("close",()=>{status.textContent="Disconnected. Refresh or reconnect.";});
  socket.addEventListener("error",()=>{status.textContent="Connection error. Check Worker deployment.";});
 }
@@ -38,10 +38,10 @@ function sync(){
   const raw=localStorage.getItem("eliasBingoAdminV3");
   if(!raw)return;
   const state=JSON.parse(raw),nums=Array.isArray(state.called)?state.called:[];
-  const payload=JSON.stringify(nums);
+  const payload=JSON.stringify({calledNumbers:nums,pattern:state.pattern||"",patternMode:state.patternMode||"auto"});
   if(payload===lastSent)return;
   lastSent=payload;
-  socket.send(JSON.stringify({type:"ADMIN_SYNC_STATE",calledNumbers:nums}));
+  socket.send(JSON.stringify({type:"ADMIN_SYNC_STATE",calledNumbers:nums,pattern:state.pattern||"",patternMode:state.patternMode||"auto"}));
   status.textContent="Live • "+input.value+" • "+nums.length+" numbers called";
  }catch(e){status.textContent="Could not read Admin game state."}
 }
