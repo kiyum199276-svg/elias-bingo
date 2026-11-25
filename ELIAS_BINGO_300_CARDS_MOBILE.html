@@ -81,8 +81,14 @@ function renderPatternBanner(){const el=document.getElementById("winningPattern"
 function render() {
   renderPatternBanner();
   current=Number(select.value)||1;
-  const cardsToShow=selectedCards.length?selectedCards:[current];
+  const cardsToShow=approvedCards;
   boardsContainer.innerHTML="";
+  if(!cardsToShow.length){
+    const info=document.createElement("div");info.className="panel";
+    info.textContent=pendingCards.length?"Card request pending Admin approval: "+pendingCards.join(", "):"Choose one or more cards and connect. Your cards will appear here after the Admin approves them.";
+    boardsContainer.appendChild(info);
+    return;
+  }
   cardsToShow.forEach(cardNo=>{
     const values=DECK[String(cardNo)];
     if(!values)return;
@@ -130,6 +136,8 @@ let calledNumbers=[];
 let winningPattern="";
 let winningPatternMode="auto";
 let winningPatternName="";
+let approvedCards=[];
+let pendingCards=[];
 const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
 let playerId=localStorage.getItem(PLAYER_ID_KEY);
 if(!playerId){playerId=(crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2));localStorage.setItem(PLAYER_ID_KEY,playerId)}
@@ -160,9 +168,19 @@ function connectToGame(){
       winningPattern=typeof message.data.pattern==="string"?message.data.pattern:"";
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
+      const me=message.data.players&&message.data.players[playerId];
+      approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
+      pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
       showCalledNumbers();
       render();
       if(message.data.players&&message.data.players[playerId])connectionStatus.textContent="Connected as "+playerName+" / ተገናኝቷል";
+    }
+    if(message.type==="CARD_REQUEST_RESULT"){
+      pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];
+      approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];
+      const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];
+      connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request sent. Waiting for Admin approval.";
+      render();
     }
     if(message.type==="ERROR")connectionStatus.textContent="Server: "+(message.message||"Error");
   });
