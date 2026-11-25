@@ -49,6 +49,28 @@ export class BingoRoom {
       sender.send(JSON.stringify({ type: "ROOM_STATE", data: this.roomState })); return;
     }
     if (data.type === "PING") { sender.send(JSON.stringify({ type: "PONG" })); return; }
+    if (data.type === "ADMIN_AUTH") {
+      const token = String(data.token || "");
+      if (token.length < 24) { sender.send(JSON.stringify({type:"ERROR",message:"Invalid admin key"})); return; }
+      if (!this.roomState.adminToken) {
+        this.roomState.adminToken = token;
+        await this.saveState();
+      }
+      if (this.roomState.adminToken !== token) { sender.send(JSON.stringify({type:"ERROR",message:"Admin key rejected"})); return; }
+      this.ctx.getWebSockets().forEach(ws => { if (ws === sender) { try { ws.serializeAttachment({role:"admin"}); } catch {} } });
+      sender.send(JSON.stringify({type:"ADMIN_AUTH_OK"}));
+      return;
+    }
+    if (data.type === "ADMIN_SYNC_STATE") {
+      let role = null;
+      try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const nums = Array.isArray(data.calledNumbers) ? data.calledNumbers.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 75).slice(-75) : [];
+      this.roomState.calledNumbers = [...new Set(nums)];
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      return;
+    }
     if (data.type === "JOIN_PLAYER") {
       const playerId = String(data.playerId || "").slice(0, 100);
       const name = String(data.name || "").trim().slice(0, 60);
