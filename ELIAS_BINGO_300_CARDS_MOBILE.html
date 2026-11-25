@@ -79,6 +79,7 @@ const PATTERN_NAMES={"6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any
 const PATTERN_CELLS={"blackout":[...Array(25).keys()],"fourcorners":[0,4,20,24],"xpattern":[0,6,12,18,24,4,8,16,20],"plus":[2,7,10,11,12,13,14,17,22],"topbottom":[0,1,2,3,4,20,21,22,23,24],"frame":[0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24],"innerbox":[6,7,8,11,13,16,17,18]};
 function renderPatternBanner(){const el=document.getElementById("winningPattern");el.innerHTML="";if(!winningPattern){el.hidden=true;return;}el.hidden=false;el.append(document.createTextNode("Winning pattern: "+(winningPatternName||PATTERN_NAMES[winningPattern]||winningPattern)+" ("+(winningPatternMode==="auto"?"Auto":"Admin selected")+")"));const note=document.createElement("small");note.textContent=PATTERN_CELLS[winningPattern]?"Gold outlines show the target pattern on each card.":"Follow the pattern rule selected by the Admin.";el.appendChild(note);}
 function render() {
+  renderPatternBanner();
   current=Number(select.value)||1;
   const cardsToShow=selectedCards.length?selectedCards:[current];
   boardsContainer.innerHTML="";
