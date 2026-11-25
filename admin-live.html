@@ -30,7 +30,7 @@ function connect(){
  socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));status.textContent="Connected. Share Game ID: "+input.value;});
  socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==="ADMIN_AUTH_OK"){status.textContent="Admin connected • Game ID: "+input.value;sync();}
-  if(m.type==="ROOM_STATE"&&m.data){renderDepositSettings(m.data);renderCardRequests(m.data);}
+  if(m.type==="ROOM_STATE"&&m.data){renderDepositSettings(m.data);renderCardRequests(m.data);renderWithdrawals(m.data);}
   if(m.type==="DEPOSIT_CONFIG_SAVED"){status.textContent="Deposit settings saved.";}
   if(m.type==="BINGO_CLAIM"){status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber;showClaimInAdminPage(m);}
   if(m.type==="ERROR")status.textContent="Server: "+m.message;
@@ -45,10 +45,14 @@ function installPage2Panel(){
  if(d.getElementById("remoteBingoClaims"))return true;
  const style=d.createElement("style");style.textContent="#remoteBingoClaims{background:#fff8df;color:#352b13;border:2px solid #d6a72b;border-radius:12px;padding:12px;margin:10px 0 16px;font-family:Arial,sans-serif}#remoteBingoClaims h2{margin:0 0 8px;font-size:18px;color:#543b00}#remoteBingoClaims .claim-meta{font-weight:bold;margin:5px 0}#remoteBingoClaims .claim-card{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;max-width:430px;margin:10px 0}#remoteBingoClaims .claim-cell{background:#e9edf5;color:#18233a;border:1px solid #9aa7bc;border-radius:5px;min-height:40px;display:grid;place-items:center;font-weight:800;font-size:14px}#remoteBingoClaims .claim-cell.hit{background:#36c58b;color:#063b27}#remoteBingoClaims .claim-cell.free{background:#f5d36a;color:#382700}#remoteBingoClaims .claim-head{background:#273957;color:#fff}#remoteBingoClaims .claim-note{font-size:13px;color:#4b5563}";
  d.head.appendChild(style);
- const panel=d.createElement("section");panel.id="remoteBingoClaims";panel.innerHTML="<h2>💳 DEPOSIT SETTINGS</h2><label style='display:block;margin:8px 0'><input id='depositEnabled' type='checkbox'> Require deposit for this game</label><div style='display:flex;gap:7px;flex-wrap:wrap'><input id='depositAmount' type='number' min='0.01' step='0.01' placeholder='Amount' style='width:110px;padding:9px;border:1px solid #aaa;border-radius:6px'><select id='depositCurrency' style='padding:9px;border:1px solid #aaa;border-radius:6px'><option>ETB</option><option>USD</option><option>EUR</option></select><select id='depositMethod' style='padding:9px;border:1px solid #aaa;border-radius:6px'><option>Telebirr</option><option>CBE Birr</option><option>E-Birr</option></select><input id='depositAccount' placeholder='Payment account number' style='flex:1;min-width:150px;padding:9px;border:1px solid #aaa;border-radius:6px'></div><button id='saveDepositConfig' type='button' style='margin:8px 0;background:#173b62;color:white;padding:9px 13px;border:0;border-radius:6px'>Save deposit settings</button><div id='depositConfigStatus' class='claim-note'>Deposits are OFF.</div><h3>Pending deposit requests</h3><div id='remoteDepositRequests' class='claim-note'>No deposit requests.</div><hr><h2>🗂 PLAYER CARD REQUESTS</h2><div id='remoteCardRequests' class='claim-note'>No pending card requests.</div><hr><h2>🏆 LIVE PLAYER BINGO CLAIMS</h2><div id='remotePattern' class='claim-meta'>Winning pattern: waiting for game state</div><div id='remoteClaimBody' class='claim-note'>Player Bingo claims will appear here. The Admin must verify each claim.</div>";
+ const panel=d.createElement("section");panel.id="remoteBingoClaims";panel.innerHTML="<h2>💳 DEPOSIT SETTINGS</h2><label style='display:block;margin:8px 0'><input id='depositEnabled' type='checkbox'> Require deposit for this game</label><div style='display:flex;gap:7px;flex-wrap:wrap'><input id='depositAmount' type='number' min='0.01' step='0.01' placeholder='Amount' style='width:110px;padding:9px;border:1px solid #aaa;border-radius:6px'><select id='depositCurrency' style='padding:9px;border:1px solid #aaa;border-radius:6px'><option>ETB</option><option>USD</option><option>EUR</option></select><select id='depositMethod' style='padding:9px;border:1px solid #aaa;border-radius:6px'><option>Telebirr</option><option>CBE Birr</option><option>E-Birr</option></select><input id='depositAccount' placeholder='Payment account number' style='flex:1;min-width:150px;padding:9px;border:1px solid #aaa;border-radius:6px'></div><button id='saveDepositConfig' type='button' style='margin:8px 0;background:#173b62;color:white;padding:9px 13px;border:0;border-radius:6px'>Save deposit settings</button><div id='depositConfigStatus' class='claim-note'>Deposits are OFF.</div><h3>Pending deposit requests</h3><div id='remoteDepositRequests' class='claim-note'>No deposit requests.</div><hr><h2>🗂 PLAYER CARD REQUESTS</h2><div id='remoteCardRequests' class='claim-note'>No pending card requests.</div><hr><h2>🏆 LIVE PLAYER BINGO CLAIMS</h2><div id='remotePattern' class='claim-meta'>Winning pattern: waiting for game state</div><div id='remoteClaimBody' class='claim-note'>Player Bingo claims will appear here. The Admin must verify each claim.</div><hr><h2>💸 PLAYER WITHDRAWAL REQUESTS</h2><div id='remoteWithdrawals' class='claim-note'>No withdrawal requests.</div>";
  page.insertBefore(panel,page.firstChild);
  const requests=d.getElementById("remoteCardRequests");
  requests.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-card-action]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({type:btn.dataset.cardAction,playerId:btn.dataset.playerId,cardNumber:Number(btn.dataset.cardNumber)}));btn.disabled=true;btn.textContent="Sending…";});
+ const claims=d.getElementById("remoteClaimBody");
+ claims.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-confirm-claim]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;const amount=Number(d.getElementById("winnerPrizeAmount").value);if(!Number.isFinite(amount)||amount<=0){status.textContent="Enter a valid prize amount.";return;}socket.send(JSON.stringify({type:"ADMIN_CONFIRM_WINNER",claimId:btn.dataset.confirmClaim,amount,currency:"ETB"}));btn.disabled=true;btn.textContent="Confirming…";});
+ const withdrawals=d.getElementById("remoteWithdrawals");
+ withdrawals.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-withdrawal-action]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({type:btn.dataset.withdrawalAction,withdrawalId:btn.dataset.withdrawalId,decision:btn.dataset.decision}));btn.disabled=true;btn.textContent="Sending…";});
  const deposits=d.getElementById("remoteDepositRequests");
  deposits.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-deposit-decision]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({type:"ADMIN_REVIEW_DEPOSIT",depositId:btn.dataset.depositId,decision:btn.dataset.depositDecision}));btn.disabled=true;btn.textContent="Sending…";});
  d.getElementById("saveDepositConfig").addEventListener("click",()=>{if(!socket||socket.readyState!==WebSocket.OPEN){status.textContent="Connect Admin first.";return;}socket.send(JSON.stringify({type:"ADMIN_SET_DEPOSIT_CONFIG",enabled:d.getElementById("depositEnabled").checked,amount:Number(d.getElementById("depositAmount").value),currency:d.getElementById("depositCurrency").value,method:d.getElementById("depositMethod").value,account:d.getElementById("depositAccount").value}));d.getElementById("depositConfigStatus").textContent="Saving deposit settings…";});
@@ -95,6 +99,21 @@ function renderCardRequests(room){
  });
  if(!count)root.textContent="No pending card requests.";
 }
+function renderWithdrawals(room){
+ if(!installPage2Panel())return;
+ const d=getAdminDoc(),root=d.getElementById("remoteWithdrawals");if(!root)return;
+ root.innerHTML="";
+ const items=Object.values(room.withdrawals||{}).sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
+ if(!items.length){root.textContent="No withdrawal requests.";return;}
+ items.forEach(item=>{
+  const row=d.createElement("div");row.style.cssText="border:1px solid #d7dce5;border-radius:8px;padding:8px;margin:6px 0";
+  const label=d.createElement("div");label.textContent=(item.playerName||"Player")+" • "+item.amount+" "+(item.currency||"ETB")+" • "+item.method+" • Account: "+item.account+" • "+item.status.toUpperCase();row.appendChild(label);
+  const add=(text,action,decision)=>{const b=d.createElement("button");b.type="button";b.textContent=text;b.dataset.withdrawalAction=action;b.dataset.withdrawalId=item.id;if(decision)b.dataset.decision=decision;b.style.cssText="margin:7px 6px 0 0;padding:8px 10px;border:0;border-radius:6px;background:#173b62;color:white;font-weight:bold";row.appendChild(b);};
+  if(item.status==="pending"){add("Approve","ADMIN_REVIEW_WITHDRAWAL","approved");add("Reject","ADMIN_REVIEW_WITHDRAWAL","rejected");}
+  if(item.status==="approved")add("Mark paid","ADMIN_MARK_WITHDRAWAL_PAID","");
+  root.appendChild(row);
+ });
+}
 function showClaimInAdminPage(m){
  if(!installPage2Panel())return;
  const d=getAdminDoc(),body=d.getElementById("remoteClaimBody"),pattern=d.getElementById("remotePattern");
@@ -107,7 +126,8 @@ function showClaimInAdminPage(m){
   m.cardValues.forEach(v=>{const c=d.createElement("div");c.className="claim-cell"+(v==="FREE"?" free":((m.calledNumbers||[]).includes(Number(v))?" hit":""));c.textContent=String(v);grid.appendChild(c)});
   body.appendChild(grid);
  }else{const note=d.createElement("div");note.textContent="Card layout was not included in this claim.";body.appendChild(note);}
- const note=d.createElement("div");note.className="claim-note";note.textContent="Check the called numbers and winning pattern before confirming the winner.";body.appendChild(note);
+ const note=d.createElement("div");note.className="claim-note";note.textContent="Check the called numbers and winning pattern before confirming the winner. Confirm only after manual verification.";body.appendChild(note);
+ if(m.claimId){const label=d.createElement("label");label.textContent="Prize amount (ETB): ";const amount=d.createElement("input");amount.id="winnerPrizeAmount";amount.type="number";amount.min="0.01";amount.step="0.01";amount.placeholder="Prize amount";amount.style.cssText="width:130px;padding:8px;border:1px solid #aaa;border-radius:6px";label.appendChild(amount);body.appendChild(label);const confirm=d.createElement("button");confirm.type="button";confirm.textContent="Confirm winner & add prize";confirm.dataset.confirmClaim=m.claimId;confirm.style.cssText="display:block;margin-top:8px;padding:9px 12px;background:#16865d;color:white;border:0;border-radius:6px;font-weight:bold";body.appendChild(confirm);}
 }
 document.getElementById("adminFrame").addEventListener("load",()=>{adminFrameReady=true;installPage2Panel();sync();});
 function sync(){
