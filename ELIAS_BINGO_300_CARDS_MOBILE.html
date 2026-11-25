@@ -231,7 +231,7 @@ function connectToGame(){
       connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request sent. Waiting for Admin approval.";
       render();
     }
-    if(message.type==="ERROR")connectionStatus.textContent="Server: "+(message.message||"Error");
+    if(message.type==="ERROR"){connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
   });
   roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
   roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
@@ -239,7 +239,7 @@ function connectToGame(){
 document.getElementById("requestWithdrawal").addEventListener("click",()=>{
  if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}
  const amount=Number(document.getElementById("withdrawAmount").value),account=document.getElementById("withdrawAccount").value.trim(),method=document.getElementById("withdrawMethod").value;
- if(!Number.isFinite(amount)||amount<=0||account.length<3){alert("Enter a valid amount and receiving account number.");return;}
+ if(!Number.isFinite(amount)||amount<=0||account.length<3){alert("Enter a valid amount and receiving account number.");return;} const available=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0; if(amount>available){document.getElementById("withdrawalStatus").textContent="Insufficient balance. Your available balance is "+available.toFixed(2)+" ETB.";return;}
  roomSocket.send(JSON.stringify({type:"PLAYER_WITHDRAWAL_REQUEST",playerId,amount,method,account,currency:"ETB"}));
  document.getElementById("withdrawalStatus").textContent="Withdrawal request sent. The Admin will review it.";
 });
