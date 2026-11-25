@@ -63,10 +63,12 @@ function sync(){
   const raw=localStorage.getItem("eliasBingoAdminV3");
   if(!raw)return;
   const state=JSON.parse(raw),nums=Array.isArray(state.called)?state.called:[];
-  const patternName=PATTERN_NAMES[state.pattern]||state.pattern||"Not selected";\n  const payload=JSON.stringify({calledNumbers:nums,pattern:state.pattern||"",patternName,patternMode:state.patternMode||"auto"});
+  const patternName=PATTERN_NAMES[state.pattern]||state.pattern||"Not selected";
+  const payload=JSON.stringify({calledNumbers:nums,pattern:state.pattern||"",patternName,patternMode:state.patternMode||"auto"});
   if(payload===lastSent)return;
   lastSent=payload;
-  socket.send(JSON.stringify({type:"ADMIN_SYNC_STATE",calledNumbers:nums,pattern:state.pattern||"",patternName,patternMode:state.patternMode||"auto"}));\n  if(adminFrameReady)installPage2Panel();
+  socket.send(JSON.stringify({type:"ADMIN_SYNC_STATE",calledNumbers:nums,pattern:state.pattern||"",patternName,patternMode:state.patternMode||"auto"}));
+  if(adminFrameReady){installPage2Panel();const d=getAdminDoc(),el=d&&d.getElementById("remotePattern");if(el)el.textContent="Winning pattern: "+patternName+" ("+(state.patternMode==="manual"?"Admin selected":"Auto")+")";}
   status.textContent="Live • "+input.value+" • "+nums.length+" numbers called";
  }catch(e){status.textContent="Could not read Admin game state."}
 }
