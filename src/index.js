@@ -359,6 +359,14 @@ export class BingoRoom {
       await this.ctx.storage.put(key,account);
       sender.send(JSON.stringify({type:"PLAYER_PASSWORD_RESET",phone})); return;
     }
+    const accountRequiredActions = new Set(["PLAYER_PURCHASE_CARDS","DEPOSIT_REQUEST","BINGO_CLAIM","PLAYER_WITHDRAWAL_REQUEST"]);
+    if (accountRequiredActions.has(data.type)) {
+      let session = null; try { session = sender.deserializeAttachment(); } catch {}
+      if (session?.role !== "player" || !session.phone) { sender.send(JSON.stringify({type:"ERROR",message:"Please log in with your phone number and password first."})); return; }
+      const account = await this.ctx.storage.get("playerAccount:" + session.phone);
+      if (!account || account.playerId !== session.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Player account session is no longer valid. Please log in again."})); return; }
+      if (account.mustChangePassword) { sender.send(JSON.stringify({type:"ERROR",message:"Your password was reset. Change your password before continuing."})); return; }
+    }
     if (data.type === "JOIN_PLAYER") {
       sender.send(JSON.stringify({type:"ERROR",message:"Please register or log in with your phone number and password."})); return;
       /* legacy device-token join disabled; account login is required. */
