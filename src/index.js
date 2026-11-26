@@ -23,7 +23,7 @@ const OWNER_PHONE = "0977320235";
 const OWNER_ORIGIN = "https://elias-bingo.pages.dev";
 function b64url(bytes) {
   let binary = ""; for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 }
 function fromB64url(value) {
   const raw = atob(value.replace(/-/g,"+").replace(/_/g,"/"));
@@ -49,7 +49,8 @@ async function verifyOwnerToken(token, secret) {
 function ownerJson(data,status=200) {
   return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
 }
-\nexport default {
+
+export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/owner/") || request.method === "OPTIONS") {
@@ -62,7 +63,7 @@ function ownerJson(data,status=200) {
         const token=await ownerToken({phone:OWNER_PHONE,exp:Date.now()+8*60*60*1000},env.OWNER_SESSION_SECRET);
         return ownerJson({token,expiresIn:28800});
       }
-      const auth=(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");
+      const auth=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
       if (!env.OWNER_SESSION_SECRET || !await verifyOwnerToken(auth,env.OWNER_SESSION_SECRET)) return ownerJson({error:"Owner login required."},401);
       if (url.pathname === "/owner/games" && request.method === "GET") {
         const id=env.OWNER_REGISTRY.idFromName("global");
