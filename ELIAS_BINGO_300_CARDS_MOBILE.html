@@ -317,9 +317,10 @@ document.getElementById("purchaseCardsBtn").addEventListener("click",()=>{
  if(!selectedCards.length){document.getElementById("purchaseStatus").textContent="Select at least one card first.";return;}
  if(!(cardPrice>0)){document.getElementById("purchaseStatus").textContent="The Admin has not set a card price yet.";return;}
  const total=cardPrice*selectedCards.length,balance=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0;
- if(balance<total){document.getElementById("purchaseStatus").textContent="Insufficient balance. Need "+total.toFixed(2)+" ETB; available "+balance.toFixed(2)+" ETB.";return;}
- if(!confirm("Buy "+selectedCards.length+" card(s) for "+total.toFixed(2)+" ETB?"))return;
- document.getElementById("purchaseCardsBtn").disabled=true;document.getElementById("purchaseStatus").textContent="Processing purchase…";
+ if(depositConfig.enabled&&balance<total){document.getElementById("purchaseStatus").textContent="Insufficient balance. Need "+total.toFixed(2)+" ETB; available "+balance.toFixed(2)+" ETB.";return;}
+ const confirmText=depositConfig.enabled?"Buy "+selectedCards.length+" card(s) for "+total.toFixed(2)+" ETB from your wallet?":"Request "+selectedCards.length+" card(s) for "+total.toFixed(2)+" ETB. Pay the Admin in cash; the Admin must confirm payment before you can play. Continue?";
+ if(!confirm(confirmText))return;
+ document.getElementById("purchaseCardsBtn").disabled=true;document.getElementById("purchaseStatus").textContent=depositConfig.enabled?"Processing wallet purchase…":"Sending cash card request…";
  roomSocket.send(JSON.stringify({type:"PLAYER_PURCHASE_CARDS",playerId,cards:selectedCards}));
  setTimeout(()=>{document.getElementById("purchaseCardsBtn").disabled=false;},1500);
 });
