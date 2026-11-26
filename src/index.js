@@ -69,6 +69,14 @@ export class BingoRoom {
       sender.send(JSON.stringify({ type: "ROOM_STATE", data: this.roomState })); return;
     }
     if (data.type === "PING") { sender.send(JSON.stringify({ type: "PONG" })); return; }
+    const accountRequiredActions = new Set(["PLAYER_PURCHASE_CARDS","DEPOSIT_REQUEST","BINGO_CLAIM","PLAYER_WITHDRAWAL_REQUEST"]);
+    if (accountRequiredActions.has(data.type)) {
+      let session = null; try { session = sender.deserializeAttachment(); } catch {}
+      if (session?.role !== "player" || !session.phone) { sender.send(JSON.stringify({type:"ERROR",message:"Please log in with your phone number and password first."})); return; }
+      const account = await this.ctx.storage.get("playerAccount:" + session.phone);
+      if (!account || account.playerId !== session.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Player account session is no longer valid. Please log in again."})); return; }
+      if (account.mustChangePassword) { sender.send(JSON.stringify({type:"ERROR",message:"Your password was reset. Change your password before continuing."})); return; }
+    }
     if (data.type === "ADMIN_AUTH") {
       const token = String(data.token || "");
       if (token.length < 24) { sender.send(JSON.stringify({type:"ERROR",message:"Invalid admin key"})); return; }
@@ -315,7 +323,7 @@ export class BingoRoom {
       const salt = randomHex(16), passwordHash = await hashPassword(password, salt);
       if (!savedToken) await this.ctx.storage.put(tokenKey, playerToken);
       const previous = this.roomState.players[playerId] || {};
-      this.roomState.players[playerId] = {...previous,name,phone,walletBalance:Number(previous.walletBalance)||0,approvedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],pendingCards:Array.isArray(previous.pendingCards)?previous.pendingCards:[],selectedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],selectedCard:(previous.approvedCards||[])[0]||null,status:"joined",joinedAt:previous.joinedAt||Date.now()};
+      this.roomState.players[playerId] = {...previous,name,walletBalance:Number(previous.walletBalance)||0,approvedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],pendingCards:Array.isArray(previous.pendingCards)?previous.pendingCards:[],selectedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],selectedCard:(previous.approvedCards||[])[0]||null,status:"joined",joinedAt:previous.joinedAt||Date.now()};
       await this.ctx.storage.put(accountKey,{phone,playerId,salt,passwordHash,iterations:PASSWORD_ITERATIONS,mustChangePassword:false,createdAt:Date.now()});
       await this.saveState();
       try { sender.serializeAttachment({role:"player",playerId,phone}); } catch {}
@@ -325,10 +333,19 @@ export class BingoRoom {
     if (data.type === "PLAYER_LOGIN") {
       const phone = normalizePhone(data.phone), password = String(data.password || "");
       if (!phone || !password) { sender.send(JSON.stringify({type:"ERROR",message:"Enter your phone number and password."})); return; }
+      const failKey = "playerLoginFail:" + phone;
+      const failures = await this.ctx.storage.get(failKey) || {count:0,lockedUntil:0};
+      if (Number(failures.lockedUntil) > Date.now()) { sender.send(JSON.stringify({type:"ERROR",message:"Too many login attempts. Try again later."})); return; }
       const key = "playerAccount:" + phone, account = await this.ctx.storage.get(key);
       if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
       const attemptHash = await hashPassword(password, account.salt);
-      if (attemptHash !== account.passwordHash) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
+      if (attemptHash !== account.passwordHash) {
+        failures.count = (Number(failures.count)||0) + 1;
+        if (failures.count >= 6) { failures.count = 0; failures.lockedUntil = Date.now() + 15*60*1000; }
+        await this.ctx.storage.put(failKey,failures);
+        sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return;
+      }
+      await this.ctx.storage.delete(failKey);
       const player = this.roomState.players[account.playerId];
       if (!player) { sender.send(JSON.stringify({type:"ERROR",message:"Player account data was not found. Contact the Admin."})); return; }
       try { sender.serializeAttachment({role:"player",playerId:account.playerId,phone}); } catch {}
@@ -358,14 +375,6 @@ export class BingoRoom {
       const salt = randomHex(16); account.salt = salt; account.passwordHash = await hashPassword(temporaryPassword,salt); account.iterations = PASSWORD_ITERATIONS; account.mustChangePassword = true; account.passwordResetAt = Date.now();
       await this.ctx.storage.put(key,account);
       sender.send(JSON.stringify({type:"PLAYER_PASSWORD_RESET",phone})); return;
-    }
-    const accountRequiredActions = new Set(["PLAYER_PURCHASE_CARDS","DEPOSIT_REQUEST","BINGO_CLAIM","PLAYER_WITHDRAWAL_REQUEST"]);
-    if (accountRequiredActions.has(data.type)) {
-      let session = null; try { session = sender.deserializeAttachment(); } catch {}
-      if (session?.role !== "player" || !session.phone) { sender.send(JSON.stringify({type:"ERROR",message:"Please log in with your phone number and password first."})); return; }
-      const account = await this.ctx.storage.get("playerAccount:" + session.phone);
-      if (!account || account.playerId !== session.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Player account session is no longer valid. Please log in again."})); return; }
-      if (account.mustChangePassword) { sender.send(JSON.stringify({type:"ERROR",message:"Your password was reset. Change your password before continuing."})); return; }
     }
     if (data.type === "JOIN_PLAYER") {
       sender.send(JSON.stringify({type:"ERROR",message:"Please register or log in with your phone number and password."})); return;
