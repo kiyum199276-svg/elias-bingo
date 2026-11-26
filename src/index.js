@@ -72,12 +72,13 @@ export default {
       if (url.pathname === "/admin/login" && request.method === "POST") {
         if (!env.OWNER_SESSION_SECRET) return ownerJson({error:"Admin login is not configured. Owner session secret is missing."},503);
         let body={}; try { body=await request.json(); } catch {}
-        const phone=normalizePhone(body.phone), password=String(body.password||""), gameId=String(body.gameId||"").trim();
-        if (!phone || password.length<8 || !/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Enter a valid phone, password, and Game ID."},400);
+        const phone=normalizePhone(body.phone), password=String(body.password||"");
+        if (!phone || password.length<8) return ownerJson({error:"Enter a valid phone number and password."},400);
         const registryId=env.OWNER_REGISTRY.idFromName("global");
-        const accountResponse=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-get",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId})});
+        const accountResponse=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-get",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
         const account=await accountResponse.json().catch(()=>null);
-        if (!accountResponse.ok || !account || !account.active) return ownerJson({error:"Admin account is not active or does not match this Game ID."},401);
+        const gameId=String(account?.gameId||"");
+        if (!accountResponse.ok || !account || !account.active || !/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Admin account is not active or has not been assigned a valid Game ID."},401);
         const attempt=await hashPassword(password,account.salt,account.iterations);
         if (attempt!==account.passwordHash) return ownerJson({error:"Phone number or password is incorrect."},401);
         await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-touch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId,lastLoginAt:Date.now()})});
@@ -627,7 +628,7 @@ export class OwnerRegistry {
     if(url.pathname==="/admin-get" && request.method==="POST"){
       let body={};try{body=await request.json()}catch{}
       const account=this.admins[String(body.phone||"")];
-      if(!account||account.gameId!==String(body.gameId||""))return new Response(JSON.stringify({error:"Admin account not found."}),{status:404});
+      if(!account||(body.gameId&&account.gameId!==String(body.gameId)))return new Response(JSON.stringify({error:"Admin account not found."}),{status:404});
       return new Response(JSON.stringify(account),{headers:{"Content-Type":"application/json"}});
     }
     if(url.pathname==="/admin-update" && request.method==="POST"){
