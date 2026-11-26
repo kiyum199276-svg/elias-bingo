@@ -18,7 +18,7 @@ small{color:#cbd5e1}.muted{font-size:13px;color:#9fb0c5}
 <button id="loginButton">Log in</button>
 </section>
 <section id="dashboard">
-<h2>All registered games</h2><p class="muted">Game IDs are added automatically when an Admin or player connects to a game.</p><section id="overview" class="game" style="display:block"><strong>Financial overview</strong><div id="financialOverview" class="muted">Loading totals…</div></section><section class="game" style="display:block"><strong>Search players across all games</strong><input id="playerSearch" placeholder="Enter player name or Player ID" autocomplete="off"><div id="playerSearchResults" class="muted">Enter a name or Player ID to search.</div></section>
+<h2>All registered games</h2><p class="muted">Game IDs are added automatically when an Admin or player connects to a game.</p><section id="overview" class="game" style="display:block"><strong>Financial overview</strong><div id="financialOverview" class="muted">Loading totals…</div></section><section class="game" style="display:block"><strong>Search players across all games</strong><input id="playerSearch" placeholder="Enter player name or Player ID" autocomplete="off"><button id="exportPlayers" class="view" type="button">Download all players (CSV)</button><div id="playerSearchResults" class="muted">Enter a name or Player ID to search.</div></section>
 <button id="refresh">Refresh game list</button><ul id="games"></ul><section id="details"><h2 id="detailTitle">Game details</h2><div id="summary"></div><h3>Players</h3><div id="playerTable"></div><h3>Deposit requests</h3><div id="depositTable"></div><h3>Withdrawals</h3><div id="withdrawalTable"></div></section>
 <button id="logout" style="background:#d9e2ef">Log out</button>
 </section>
@@ -98,7 +98,18 @@ function runPlayerSearch(){
  for(const player of matches){const tr=document.createElement("tr");const values=[player.name,player.playerId,player.gameId,Number(player.walletBalance||0).toFixed(2),player.approvedCards,player.depositApproved?"Yes":"No"];for(const value of values){const td=document.createElement("td");td.textContent=value===undefined||value===null?"—":String(value);tr.appendChild(td)}body.appendChild(tr)}
  table.appendChild(body);host.appendChild(table);
 }
+
 $("playerSearch").addEventListener("input",runPlayerSearch);
+$("exportPlayers").addEventListener("click",()=>{
+ if(!allPlayers.length){showError("There are no player records to export.");return}
+ const columns=["name","playerId","gameId","walletBalance","approvedCards","depositApproved","joinedAt","lastLoginAt"];
+ const csvCell=value=>{const text=String(value??"");return '"'+text.replace(/"/g,'""')+'"';};
+ const rows=[columns.join(","),...allPlayers.map(player=>columns.map(key=>csvCell(player[key])).join(","))];
+ const blob=new Blob(["\\uFEFF"+rows.join("\\r\\n")],{type:"text/csv;charset=utf-8"});
+ const url=URL.createObjectURL(blob),link=document.createElement("a");
+ link.href=url;link.download="elias-bingo-players.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+ showError("Player CSV export prepared.");
+});
 async function loadGame(gameId){
  try{
   showError("Loading "+gameId+"...");
