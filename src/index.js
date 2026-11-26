@@ -46,6 +46,20 @@ async function verifyOwnerToken(token, secret) {
     return payload.phone===OWNER_PHONE && payload.exp>Date.now();
   } catch { return false; }
 }
+async function readSignedPayload(token, secret) {
+  try {
+    const [body,signature] = String(token||"").split(".");
+    if (!body || !signature) return null;
+    const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
+    const valid = await crypto.subtle.verify("HMAC",key,fromB64url(signature),new TextEncoder().encode(body));
+    if (!valid) return null;
+    return JSON.parse(new TextDecoder().decode(fromB64url(body)));
+  } catch { return null; }
+}
+async function verifyAdminSession(token, secret, gameId) {
+  const payload=await readSignedPayload(token,secret);
+  return !!(payload && payload.role==="admin" && payload.gameId===gameId && payload.phone && payload.exp>Date.now());
+}
 function ownerJson(data,status=200) {
   return new Response(status===204?null:JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
 }
@@ -53,8 +67,21 @@ function ownerJson(data,status=200) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith("/owner/") || request.method === "OPTIONS") {
+    if (url.pathname.startsWith("/owner/") || url.pathname === "/admin/login" || request.method === "OPTIONS") {
       if (request.method === "OPTIONS") return ownerJson({},204);
+      if (url.pathname === "/admin/login" && request.method === "POST") {
+        let body={}; try { body=await request.json(); } catch {}
+        const phone=normalizePhone(body.phone), password=String(body.password||""), gameId=String(body.gameId||"").trim();
+        if (!phone || password.length<8 || !/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Enter a valid phone, password, and Game ID."},400);
+        const registryId=env.OWNER_REGISTRY.idFromName("global");
+        const accountResponse=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-get",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId})});
+        const account=await accountResponse.json().catch(()=>null);
+        if (!accountResponse.ok || !account || !account.active) return ownerJson({error:"Admin account is not active or does not match this Game ID."},401);
+        const attempt=await hashPassword(password,account.salt,account.iterations);
+        if (attempt!==account.passwordHash) return ownerJson({error:"Phone number or password is incorrect."},401);
+        const token=await ownerToken({role:"admin",phone,gameId,exp:Date.now()+8*60*60*1000},env.OWNER_SESSION_SECRET);
+        return ownerJson({token,gameId,expiresIn:28800});
+      }
       if (url.pathname === "/owner/login" && request.method === "POST") {
         if (!env.OWNER_PASSWORD || !env.OWNER_SESSION_SECRET) return ownerJson({error:"Owner login is not configured yet. Set OWNER_PASSWORD and OWNER_SESSION_SECRET in Cloudflare Worker secrets."},503);
         let body={}; try { body=await request.json(); } catch {}
@@ -65,6 +92,34 @@ export default {
       }
       const auth=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
       if (!env.OWNER_SESSION_SECRET || !await verifyOwnerToken(auth,env.OWNER_SESSION_SECRET)) return ownerJson({error:"Owner login required."},401);
+      if (url.pathname === "/owner/admins" && request.method === "GET") {
+        const registryId=env.OWNER_REGISTRY.idFromName("global");
+        const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-list");
+        return ownerJson(await response.json(),response.status);
+      }
+      if (url.pathname === "/owner/admins" && request.method === "POST") {
+        let body={}; try { body=await request.json(); } catch {}
+        const phone=normalizePhone(body.phone), password=String(body.password||""), gameId=String(body.gameId||"").trim();
+        if (!phone || password.length<8 || password.length>128 || !/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Enter a valid phone number, password (8+ characters), and Game ID."},400);
+        const salt=randomHex(16), passwordHash=await hashPassword(password,salt);
+        const registryId=env.OWNER_REGISTRY.idFromName("global");
+        const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId,salt,passwordHash,iterations:PASSWORD_ITERATIONS,active:true,createdAt:Date.now()})});
+        return ownerJson(await response.json(),response.status);
+      }
+      if (url.pathname === "/owner/admins/update" && request.method === "POST") {
+        let body={}; try { body=await request.json(); } catch {}
+        const phone=normalizePhone(body.phone), action=String(body.action||""), gameId=String(body.gameId||"");
+        if (!phone || !["enable","disable","reset-password"].includes(action)) return ownerJson({error:"Invalid Admin update request."},400);
+        let passwordData={};
+        if(action==="reset-password"){
+          const password=String(body.password||"");
+          if(password.length<8||password.length>128)return ownerJson({error:"New password must be 8 to 128 characters."},400);
+          const salt=randomHex(16);passwordData={salt,passwordHash:await hashPassword(password,salt),iterations:PASSWORD_ITERATIONS};
+        }
+        const registryId=env.OWNER_REGISTRY.idFromName("global");
+        const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId,action,...passwordData,updatedAt:Date.now()})});
+        return ownerJson(await response.json(),response.status);
+      }
       if (url.pathname === "/owner/games" && request.method === "GET") {
         const id=env.OWNER_REGISTRY.idFromName("global");
         const response=await env.OWNER_REGISTRY.get(id).fetch("https://registry/list");
@@ -170,12 +225,18 @@ export class BingoRoom {
     if (data.type === "ADMIN_AUTH") {
       const token = String(data.token || "");
       if (token.length < 24) { sender.send(JSON.stringify({type:"ERROR",message:"Invalid admin key"})); return; }
+      const accountSession=await verifyAdminSession(token,this.env.OWNER_SESSION_SECRET,this.roomState.gameId);
+      if(accountSession){
+        try { sender.serializeAttachment({role:"admin",adminPhone:accountSession.phone,authType:"account"}); } catch {}
+        sender.send(JSON.stringify({type:"ADMIN_AUTH_OK"}));
+        return;
+      }
       if (!this.adminToken) {
         this.adminToken = token;
         await this.ctx.storage.put("adminToken", token);
       }
       if (this.adminToken !== token) { sender.send(JSON.stringify({type:"ERROR",message:"Admin key rejected"})); return; }
-      this.ctx.getWebSockets().forEach(ws => { if (ws === sender) { try { ws.serializeAttachment({role:"admin"}); } catch {} } });
+      try { sender.serializeAttachment({role:"admin",authType:"legacy"}); } catch {}
       sender.send(JSON.stringify({type:"ADMIN_AUTH_OK"}));
       return;
     }
@@ -520,10 +581,40 @@ export class BingoRoom {
 }
 
 export class OwnerRegistry {
-  constructor(ctx,env) { this.ctx=ctx; this.env=env; this.ready=this.ctx.blockConcurrencyWhile(async()=>{this.games=await this.ctx.storage.get("games")||{};}); }
+  constructor(ctx,env) { this.ctx=ctx; this.env=env; this.ready=this.ctx.blockConcurrencyWhile(async()=>{this.games=await this.ctx.storage.get("games")||{};this.admins=await this.ctx.storage.get("admins")||{};}); }
   async fetch(request) {
     await this.ready;
     const url=new URL(request.url);
+    if(url.pathname==="/admin-list" && request.method==="GET"){
+      const admins=Object.values(this.admins).map(a=>({phone:a.phone,gameId:a.gameId,active:!!a.active,createdAt:a.createdAt,updatedAt:a.updatedAt,lastLoginAt:a.lastLoginAt||0}));
+      return new Response(JSON.stringify({admins}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/admin-create" && request.method==="POST"){
+      let body={};try{body=await request.json()}catch{}
+      const phone=String(body.phone||""),gameId=String(body.gameId||"");
+      if(!phone||!gameId||!body.salt||!body.passwordHash)return new Response(JSON.stringify({error:"Invalid Admin account."}),{status:400});
+      if(this.admins[phone])return new Response(JSON.stringify({error:"An Admin account with this phone number already exists."}),{status:409});
+      this.admins[phone]={phone,gameId,salt:body.salt,passwordHash:body.passwordHash,iterations:body.iterations||PASSWORD_ITERATIONS,active:true,createdAt:body.createdAt||Date.now()};
+      await this.ctx.storage.put("admins",this.admins);
+      return new Response(JSON.stringify({ok:true,message:"Admin account created."}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/admin-get" && request.method==="POST"){
+      let body={};try{body=await request.json()}catch{}
+      const account=this.admins[String(body.phone||"")];
+      if(!account||account.gameId!==String(body.gameId||""))return new Response(JSON.stringify({error:"Admin account not found."}),{status:404});
+      return new Response(JSON.stringify(account),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/admin-update" && request.method==="POST"){
+      let body={};try{body=await request.json()}catch{}
+      const account=this.admins[String(body.phone||"")];
+      if(!account||account.gameId!==String(body.gameId||""))return new Response(JSON.stringify({error:"Admin account not found."}),{status:404});
+      if(body.action==="enable")account.active=true;
+      else if(body.action==="disable")account.active=false;
+      else if(body.action==="reset-password"&&body.salt&&body.passwordHash){account.salt=body.salt;account.passwordHash=body.passwordHash;account.iterations=body.iterations||PASSWORD_ITERATIONS;}
+      else return new Response(JSON.stringify({error:"Invalid Admin action."}),{status:400});
+      account.updatedAt=body.updatedAt||Date.now();await this.ctx.storage.put("admins",this.admins);
+      return new Response(JSON.stringify({ok:true,message:"Admin account updated."}),{headers:{"Content-Type":"application/json"}});
+    }
     if (url.pathname==="/register" && request.method==="POST") {
       let body={}; try {body=await request.json();} catch {}
       const gameId=String(body.gameId||"").trim().slice(0,80);
