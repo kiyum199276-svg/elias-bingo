@@ -1,8 +1,8 @@
 
 const PASSWORD_ITERATIONS = 210000;
 function normalizePhone(value) {
-  const phone = String(value || "").replace(/[\\s()+.-]/g, "");
-  return /^\\d{7,15}$/.test(phone) ? phone : "";
+  const phone = String(value || "").replace(/[\s()+.-]/g, "");
+  return /^\d{7,15}$/.test(phone) ? phone : "";
 }
 function randomHex(bytes = 32) {
   const data = new Uint8Array(bytes); crypto.getRandomValues(data);
