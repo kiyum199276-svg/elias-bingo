@@ -1,7 +1,7 @@
 
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "elias-bingo",
+  "name": "elias-bingo",\n  "vars": {\n    "OWNER_PHONE": "0977320235"\n  },
   "main": "src/index.js",
   "compatibility_date": "2026-11-25",
   "durable_objects": {
