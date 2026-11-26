@@ -8,7 +8,7 @@
 @media(max-width:520px){#bar{gap:6px}#bar strong{width:100%}input{flex:1;min-width:110px}#status{width:100%}iframe{height:calc(100vh - 106px)}}
 </style></head><body>
 <div id="bar"><strong>ELIAS BINGO LIVE ROOM</strong><input id="adminPhone" inputmode="tel" placeholder="Admin phone"><input id="adminPassword" type="password" placeholder="Admin password" autocomplete="current-password"><button id="adminLogin" type="button">Admin login</button><input id="gameId" readonly aria-label="Game ID"><button id="newRoom">Create permanent Game ID</button><button id="copy">Copy ID</button><button id="resetRound" type="button">Reset Game &amp; Release Cards</button><span id="status">Sign in with your Admin account or use an existing room key.</span></div>
-<iframe id="adminFrame" src="ELIAS_BINGO_AUTO_PATTERN_NEW_GAME_FIXED.html" title="ELIAS BINGO Admin"></iframe>
+<iframe id="adminFrame" src="ELIAS_BINGO_AUTO_PATTERN_NEW_GAME_FIXED.html" title="ELIAS BINGO Admin" style="display:none"></iframe>
 <script>
 "use strict";
 const SERVER="wss://elias-bingo.elum199276kk.workers.dev/room/";
@@ -49,7 +49,7 @@ function connect(){
  socket=new WebSocket(SERVER+encodeURIComponent(input.value));
  socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));status.textContent="Connected. Share Game ID: "+input.value;});
  socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-  if(m.type==="ADMIN_AUTH_OK"){status.textContent="Admin connected • Game ID: "+input.value;sync();}
+  if(m.type==="ADMIN_AUTH_OK"){document.getElementById("adminFrame").style.display="block";status.textContent="Admin connected • Game ID: "+input.value;sync();}
   if(m.type==="ROOM_STATE"&&m.data){renderPlayers(m.data);renderDepositSettings(m.data);renderCardRequests(m.data);renderWithdrawals(m.data);}
   if(m.type==="DEPOSIT_CONFIG_SAVED"){status.textContent="Deposit settings saved.";}
   if(m.type==="PLAYER_PASSWORD_RESET"){const d=getAdminDoc();if(d&&d.getElementById("resetPlayerPasswordStatus"))d.getElementById("resetPlayerPasswordStatus").textContent="Temporary password set for "+m.phone+". Give it to the player privately; they must change it after login.";if(d&&d.getElementById("temporaryPlayerPassword"))d.getElementById("temporaryPlayerPassword").value="";status.textContent="Player password reset.";}
