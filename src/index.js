@@ -1,8 +1,10 @@
 
 const PASSWORD_ITERATIONS = 210000;
 function normalizePhone(value) {
-  const phone = String(value || "").replace(/[\s()+.-]/g, "");
-  return /^\d{7,15}$/.test(phone) ? phone : "";
+  let phone = String(value || "").replace(/[\s()+.-]/g, "");
+  if (/^251[79]\d{8}$/.test(phone)) phone = "0" + phone.slice(3);
+  if (/^0[79]\d{8}$/.test(phone)) return phone;
+  return "";
 }
 function randomHex(bytes = 32) {
   const data = new Uint8Array(bytes); crypto.getRandomValues(data);
@@ -318,7 +320,8 @@ export class BingoRoom {
         sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid phone number and password (8 to 128 characters)."})); return;
       }
       const accountKey = "playerAccount:" + phone;
-      if (await this.ctx.storage.get(accountKey)) { sender.send(JSON.stringify({type:"ERROR",message:"This phone number is already registered in this game. Please log in."})); return; }
+      const legacyPhone = "251" + phone.slice(1);
+      if (await this.ctx.storage.get(accountKey) || await this.ctx.storage.get("playerAccount:" + legacyPhone)) { sender.send(JSON.stringify({type:"ERROR",message:"This phone number is already registered in this game. Please log in."})); return; }
       const tokenKey = "playerToken:" + playerId, savedToken = await this.ctx.storage.get(tokenKey);
       if ((savedToken && savedToken !== playerToken) || (!savedToken && this.roomState.players[playerId])) {
         sender.send(JSON.stringify({type:"ERROR",message:"This existing player profile cannot be linked from this device. Contact the Admin."})); return;
@@ -339,7 +342,9 @@ export class BingoRoom {
       const failKey = "playerLoginFail:" + phone;
       const failures = await this.ctx.storage.get(failKey) || {count:0,lockedUntil:0};
       if (Number(failures.lockedUntil) > Date.now()) { sender.send(JSON.stringify({type:"ERROR",message:"Too many login attempts. Try again later."})); return; }
-      const key = "playerAccount:" + phone, account = await this.ctx.storage.get(key);
+      const key = "playerAccount:" + phone;
+      const legacyKey = "playerAccount:251" + phone.slice(1);
+      const account = await this.ctx.storage.get(key) || await this.ctx.storage.get(legacyKey);
       if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
       const attemptHash = await hashPassword(password, account.salt);
       if (attemptHash !== account.passwordHash) {
@@ -373,7 +378,9 @@ export class BingoRoom {
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required."})); return; }
       const phone = normalizePhone(data.phone), temporaryPassword = String(data.temporaryPassword || "");
       if (!phone || temporaryPassword.length < 8 || temporaryPassword.length > 128) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid player phone number and temporary password (at least 8 characters)."})); return; }
-      const key = "playerAccount:" + phone, account = await this.ctx.storage.get(key);
+      const key = "playerAccount:" + phone;
+      const legacyKey = "playerAccount:251" + phone.slice(1);
+      const account = await this.ctx.storage.get(key) || await this.ctx.storage.get(legacyKey);
       if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"No registered player found with that phone number in this game."})); return; }
       const salt = randomHex(16); account.salt = salt; account.passwordHash = await hashPassword(temporaryPassword,salt); account.iterations = PASSWORD_ITERATIONS; account.mustChangePassword = true; account.passwordResetAt = Date.now();
       await this.ctx.storage.put(key,account);
