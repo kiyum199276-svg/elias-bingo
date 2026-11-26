@@ -93,7 +93,9 @@ export class BingoRoom {
       sender.send(JSON.stringify({type:"CARD_PRICE_SAVED",price})); return;
     }
     if (data.type === "PLAYER_PURCHASE_CARDS") {
-      const playerId=String(data.playerId||"").slice(0,100), player=this.roomState.players[playerId];
+      let identity = null; try { identity = sender.deserializeAttachment(); } catch {}
+      if (identity?.role !== "player" || !identity.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Reconnect to the game before purchasing"})); return; }
+      const playerId = identity.playerId, player = this.roomState.players[playerId];
       const requested=Array.isArray(data.cards)?[...new Set(data.cards.map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=300))]:[];
       const price=Number(this.roomState.cardPrice);
       if(!player||!requested.length){sender.send(JSON.stringify({type:"ERROR",message:"Connect to the game and select at least one card"}));return;}
@@ -161,7 +163,9 @@ export class BingoRoom {
       return;
     }
     if (data.type === "DEPOSIT_REQUEST") {
-      const playerId = String(data.playerId || "").slice(0, 100);
+      let identity = null; try { identity = sender.deserializeAttachment(); } catch {}
+      if (identity?.role !== "player" || !identity.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Reconnect to the game before submitting a deposit"})); return; }
+      const playerId = identity.playerId;
       const player = this.roomState.players[playerId];
       const config = this.roomState.depositConfig || {enabled:false};
       const reference = String(data.reference || "").trim().slice(0, 100);
@@ -220,7 +224,9 @@ export class BingoRoom {
       return;
     }
     if (data.type === "BINGO_CLAIM") {
-      const playerId = String(data.playerId || "").slice(0, 100);
+      let identity = null; try { identity = sender.deserializeAttachment(); } catch {}
+      if (identity?.role !== "player" || !identity.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Reconnect to the game before claiming Bingo"})); return; }
+      const playerId = identity.playerId;
       const cardNumber = Number(data.cardNumber);
       const player = this.roomState.players[playerId];
       if (!player || !Array.isArray(player.approvedCards) || !player.approvedCards.includes(cardNumber)) {
@@ -247,7 +253,9 @@ export class BingoRoom {
       await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
     }
     if (data.type === "PLAYER_WITHDRAWAL_REQUEST") {
-      const playerId = String(data.playerId||"").slice(0,100), player = this.roomState.players[playerId], amount = Number(data.amount);
+      let identity = null; try { identity = sender.deserializeAttachment(); } catch {}
+      if (identity?.role !== "player" || !identity.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Reconnect to the game before requesting a withdrawal"})); return; }
+      const playerId = identity.playerId, player = this.roomState.players[playerId], amount = Number(data.amount);
       const method = ["Telebirr","CBE Birr","E-Birr"].includes(data.method) ? data.method : "";
       const account = String(data.account||"").trim().slice(0,100);
       if (!player || !Number.isFinite(amount) || amount <= 0 || !method || account.length < 3) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid amount, payment method, and account number"})); return; }
@@ -276,13 +284,22 @@ export class BingoRoom {
       item.status = "paid"; item.paidAt = Date.now(); await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
     }
     if (data.type === "JOIN_PLAYER") {
+      let currentIdentity = null; try { currentIdentity = sender.deserializeAttachment(); } catch {}
+      if (currentIdentity?.role === "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin connections cannot join as players"})); return; }
       const playerId = String(data.playerId || "").slice(0, 100);
+      const playerToken = String(data.playerToken || "");
       const name = String(data.name || "").trim().slice(0, 60);
       const rawCards = Array.isArray(data.cards) ? data.cards : [data.card];
       const cards = [...new Set(rawCards.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 300))].slice(0, 300);
-      if (!playerId || !name) {
-        sender.send(JSON.stringify({ type: "ERROR", message: "Valid player ID, name, and at least one card are required" })); return;
+      if (!playerId || !name || playerToken.length < 32) {
+        sender.send(JSON.stringify({ type: "ERROR", message: "Valid player identity and name are required. Please refresh the player page." })); return;
       }
+      const tokenKey = "playerToken:" + playerId;
+      const savedToken = await this.ctx.storage.get(tokenKey);
+      if (savedToken && savedToken !== playerToken) {
+        sender.send(JSON.stringify({ type: "ERROR", message: "Player identity verification failed. Use the original device or contact the Admin." })); return;
+      }
+      if (!savedToken) await this.ctx.storage.put(tokenKey, playerToken);
       const previous = this.roomState.players[playerId] || {};
       if (!this.roomState.deposits) this.roomState.deposits = {};
       if (!this.roomState.depositConfig) this.roomState.depositConfig = {enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""};
@@ -292,6 +309,7 @@ export class BingoRoom {
       const pendingCards = Array.isArray(previous.pendingCards) ? previous.pendingCards : [];
       this.roomState.players[playerId] = { ...previous, name, walletBalance: Number(previous.walletBalance)||0, approvedCards, pendingCards, selectedCards: approvedCards, selectedCard: approvedCards[0] || null, status: "joined", joinedAt: previous.joinedAt || Date.now() };
       await this.saveState();
+      try { sender.serializeAttachment({role:"player",playerId}); } catch {}
       sender.send(JSON.stringify({type:"PLAYER_JOINED",approvedCards}));
       this.broadcast({ type: "ROOM_STATE", data: this.roomState });
       return;
