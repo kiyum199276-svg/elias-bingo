@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "elias-bingo-pwa-v1";
+const CACHE_NAME = "elias-bingo-pwa-v2";
 const APP_SHELL = [
   "/", "/index.html", "/offline.html", "/manifest.webmanifest",
   "/icons/elias-bingo.svg",
@@ -16,12 +16,6 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).then(response => {
-      if (response && response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-      }
-      return response;
-    }).catch(async () => (await caches.match(request)) || (await caches.match("/offline.html"))));
+    event.respondWith(fetch(request).catch(() => caches.match("/offline.html")));
   }
 });
