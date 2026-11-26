@@ -14,7 +14,8 @@ async function hashPassword(password, saltHex) {
   const bits = await crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:PASSWORD_ITERATIONS}, key, 256);
   return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
 }
-\nexport default {
+
+export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/") return new Response("ELIAS BINGO SERVER ONLINE");
