@@ -44,6 +44,7 @@ const $=id=>document.getElementById(id);
 let token="";
 let allPlayers=[];
 let allReports=[];
+let allGames=[];
 function showError(message){$("message").textContent=message}
 async function request(path,options={}) {
  const response=await fetch(API+path,{...options,headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{}),...(options.headers||{})}});
@@ -61,7 +62,7 @@ async function loadAdmins(){
   for(const admin of data.admins){
    const row=document.createElement("div");row.className="game";row.style.display="block";
    const title=document.createElement("strong");title.textContent=admin.phone+" • "+admin.gameId;
-   const state=document.createElement("div");state.className="muted";state.textContent=(admin.active?"Active":"Disabled")+" • Created: "+(admin.createdAt?new Date(admin.createdAt).toLocaleString():"—");
+   const state=document.createElement("div");state.className="muted";state.textContent=(admin.active?"Active":"Disabled")+" • Created: "+(admin.createdAt?new Date(admin.createdAt).toLocaleString():"—")+" • Last login: "+(admin.lastLoginAt?new Date(admin.lastLoginAt).toLocaleString():"Never");
    const actions=document.createElement("div");actions.style.cssText="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
    const toggle=document.createElement("button");toggle.className="view";toggle.textContent=admin.active?"Disable Admin":"Enable Admin";
    toggle.addEventListener("click",async()=>{await updateAdmin(admin,admin.active?"disable":"enable","");});
@@ -78,11 +79,24 @@ async function updateAdmin(admin,action,password){
   $("adminMessage").textContent=data.message||"Admin account updated.";await loadAdmins();
  }catch(error){$("adminMessage").textContent=error.message}
 }
+function renderGameList(){
+ $("games").innerHTML="";
+ const query=($("gameSearch")?.value||"").trim().toLowerCase();
+ const matches=allGames.filter(game=>String(game.gameId).toLowerCase().includes(query));
+ if(!matches.length){$("games").textContent="No matching games.";return;}
+ for(const game of matches){
+  const li=document.createElement("li");li.className="game";
+  const name=document.createElement("strong");name.textContent=game.gameId;
+  const meta=document.createElement("small");meta.textContent="Last seen: "+new Date(game.lastSeen).toLocaleString();
+  const view=document.createElement("button");view.className="view";view.textContent="View players & report";view.addEventListener("click",()=>loadGame(game.gameId));
+  li.append(name,meta,view);$("games").appendChild(li);
+ }
+}
 async function loadGames(){
  try{
   const data=await request("/owner/games");
-  $("games").innerHTML="";
-  if(!data.games||!data.games.length){$("games").innerHTML="<li class='game'>No games have connected yet.</li>";return}
+  if(!data.games||!data.games.length){allGames=[];$("games").innerHTML="<li class='game'>No games have connected yet.</li>";return}
+  allGames=data.games;
   let walletETB=0,approvedDeposits={},pendingDeposits={},approvedWithdrawals={},pendingWithdrawals=0;
   const reports=await Promise.all(data.games.map(game=>request("/owner/game?gameId="+encodeURIComponent(game.gameId)).catch(()=>null)));
   allPlayers=[];
@@ -101,13 +115,7 @@ async function loadGames(){
   const formatTotals=obj=>Object.keys(obj).length?Object.entries(obj).map(([c,v])=>Number(v).toFixed(2)+" "+c).join(" · "):"0.00";
   $("financialOverview").textContent="Player wallets: "+walletETB.toFixed(2)+" ETB | Approved deposits: "+formatTotals(approvedDeposits)+" | Pending deposits: "+formatTotals(pendingDeposits)+" | Approved/paid withdrawals: "+formatTotals(approvedWithdrawals)+" | Pending withdrawal requests: "+pendingWithdrawals;
   runPlayerSearch();
-  for(const game of data.games.filter(item=>String(item.gameId).toLowerCase().includes(($("gameSearch")?.value||"").trim().toLowerCase()))){
-   const li=document.createElement("li");li.className="game";
-   const name=document.createElement("strong");name.textContent=game.gameId;
-   const meta=document.createElement("small");meta.textContent="Last seen: "+new Date(game.lastSeen).toLocaleString();
-   const view=document.createElement("button");view.className="view";view.textContent="View players & report";view.addEventListener("click",()=>loadGame(game.gameId));
-   li.append(name,meta,view);$("games").appendChild(li);
-  }
+  renderGameList();
   showError("");
  }catch(error){showError(error.message)}
 }
@@ -144,7 +152,7 @@ function runPlayerSearch(){
 }
 
 $("playerSearch").addEventListener("input",runPlayerSearch);
-$("gameSearch").addEventListener("input",()=>loadGames());
+$("gameSearch").addEventListener("input",renderGameList);
 $("exportPlayers").addEventListener("click",()=>{
  if(!allPlayers.length){showError("There are no player records to export.");return}
  const columns=["name","playerId","gameId","walletBalance","approvedCards","depositApproved","joinedAt","lastLoginAt"];
