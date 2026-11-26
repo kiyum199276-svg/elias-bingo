@@ -70,6 +70,14 @@ export default {
         const response=await env.OWNER_REGISTRY.get(id).fetch("https://registry/list");
         return new Response(response.body,{status:response.status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
       }
+      if (url.pathname === "/owner/game" && request.method === "GET") {
+        const gameId=String(url.searchParams.get("gameId")||"").trim();
+        if (!/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Invalid Game ID."},400);
+        const id=env.BINGO_ROOMS.idFromName(gameId);
+        const response=await env.BINGO_ROOMS.get(id).fetch("https://room/owner-snapshot");
+        const data=await response.json().catch(()=>({error:"Could not read game information."}));
+        return ownerJson(data,response.status);
+      }
       return ownerJson({error:"Owner endpoint not found."},404);
     }
     if (url.pathname === "/") return new Response("ELIAS BINGO SERVER ONLINE");
@@ -107,7 +115,19 @@ export class BingoRoom {
 
   async fetch(request) {
     await this.ready;
-    const gameId = decodeURIComponent(new URL(request.url).pathname.slice("/room/".length));
+    const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === "/owner-snapshot" && request.method === "GET") {
+      const players=Object.entries(this.roomState.players||{}).map(([playerId,p])=>({
+        playerId,name:String(p.name||"Player"),walletBalance:Number(p.walletBalance)||0,
+        approvedCards:Array.isArray(p.approvedCards)?p.approvedCards.length:0,
+        joinedAt:Number(p.joinedAt)||0,lastLoginAt:Number(p.lastLoginAt)||0,
+        depositApproved:!!p.depositApproved
+      }));
+      const deposits=Object.values(this.roomState.deposits||{}).map(d=>({playerName:String(d.playerName||""),amount:Number(d.amount)||0,status:String(d.status||""),createdAt:Number(d.createdAt)||0,method:String(d.method||"")}));
+      const withdrawals=Object.values(this.roomState.withdrawals||{}).map(w=>({playerName:String(w.playerName||""),amount:Number(w.amount)||0,status:String(w.status||""),createdAt:Number(w.createdAt)||0,method:String(w.method||"")}));
+      return new Response(JSON.stringify({gameId:this.roomState.gameId,gameRound:Number(this.roomState.gameRound)||0,cardPrice:Number(this.roomState.cardPrice)||0,players,deposits,withdrawals,updatedAt:Number(this.roomState.updatedAt)||0}),{headers:{"Content-Type":"application/json"}});
+    }
+    const gameId = decodeURIComponent(requestUrl.pathname.slice("/room/".length));
     if (!this.roomState.gameId) { this.roomState.gameId = gameId; await this.saveState(); }
     if (this.roomState.gameId !== gameId) return new Response("Game ID mismatch", { status: 404 });
     const pair = new WebSocketPair();
