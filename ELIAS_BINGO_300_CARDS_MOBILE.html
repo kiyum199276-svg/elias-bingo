@@ -41,10 +41,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 .player-card .actions{gap:4px;margin-top:6px;flex-direction:column}
 .player-card .actions button{width:100%;padding:8px 4px;font-size:11px}
 .player-card .claim-status{font-size:10px}
-.current-call{text-align:center;margin-top:12px;padding:12px;background:#fff;border:1px solid var(--line);border-radius:16px}
-.current-call-label{font-size:13px;color:#526579;font-weight:700}
-.current-call-circle{width:94px;height:94px;margin:8px auto 2px;border-radius:50%;background:#080808;color:#fff;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;box-shadow:0 4px 12px #0003}
-.current-call-letter{font-size:14px;color:#526579;font-weight:700}
+.current-call-circle{width:94px;height:94px;margin:12px auto;border-radius:50%;background:#080808;color:#fff;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;box-shadow:0 4px 12px #0003}
 @media(max-width:360px){main{padding:10px 8px 22px}.board{gap:3px;padding:5px}.cell{border-radius:6px}.player-card{padding:5px}.player-card .cell{font-size:10px}.player-card .letter{font-size:11px;min-height:19px}button{padding:11px 10px}.current-call-circle{width:82px;height:82px;font-size:36px}}
 </style>
 <meta name="theme-color" content="#10243a">
@@ -92,11 +89,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <div id="withdrawalStatus" class="help">Winnings become available only after the Admin confirms your Bingo win.</div>
   <div id="withdrawalHistory" class="help"></div>
 </section>
-<section class="current-call" aria-live="polite">
-  <div class="current-call-label">CURRENT NUMBER / አሁን የተጠራው ቁጥር</div>
-  <div id="currentCallNumber" class="current-call-circle">—</div>
-  <div id="currentCallLetter" class="current-call-letter">Waiting for Admin to call</div>
-</section>
+<div id="currentCallNumber" class="current-call-circle" aria-live="polite" aria-label="Last called number">—</div>
 <div id="winningPattern" class="pattern-banner" hidden></div><div id="gamePrizeInfo" class="panel" style="margin:10px 0;padding:12px;border:2px solid #d6a72b;background:#fff8df;color:#352b13;font-weight:700" hidden>Card price: — • Total winning prize pool: —</div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
 <div class="actions"><button id="fullBtn" type="button">Full Screen</button></div>
 <p class="note">የካርድ ምልክቶች አሁንም በዚህ ስልክ ላይ ይቀመጣሉ። የAdmin ጥሪዎች ከተገናኙ በቀጥታ እዚህ ይታያሉ።</p>
@@ -224,10 +217,8 @@ function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
   const number=calledNumbers.length?Number(calledNumbers[calledNumbers.length-1]):null;
   const numberEl=document.getElementById("currentCallNumber");
-  const letterEl=document.getElementById("currentCallLetter");
-  if(!numberEl||!letterEl)return;
+  if(!numberEl)return;
   numberEl.textContent=Number.isInteger(number)&&number>=1&&number<=75?String(number):"—";
-  letterEl.textContent=Number.isInteger(number)&&number>=1&&number<=75?numberLabel(number):"Waiting for Admin to call";
 }
 function connectToGame(){
   const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value;
