@@ -1,5 +1,5 @@
 
-const PASSWORD_ITERATIONS = 210000;
+const PASSWORD_ITERATIONS = 100000;
 function normalizePhone(value) {
   let phone = String(value || "").replace(/[\s()+.-]/g, "");
   if (/^251[79]\d{8}$/.test(phone)) phone = "0" + phone.slice(3);
@@ -10,10 +10,11 @@ function randomHex(bytes = 32) {
   const data = new Uint8Array(bytes); crypto.getRandomValues(data);
   return Array.from(data, b => b.toString(16).padStart(2, "0")).join("");
 }
-async function hashPassword(password, saltHex) {
+async function hashPassword(password, saltHex, iterations = PASSWORD_ITERATIONS) {
   const salt = Uint8Array.from(saltHex.match(/.{2}/g).map(x => parseInt(x, 16)));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:PASSWORD_ITERATIONS}, key, 256);
+  const safeIterations = Math.min(100000, Math.max(1, Number(iterations) || PASSWORD_ITERATIONS));
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:safeIterations}, key, 256);
   return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -346,7 +347,7 @@ export class BingoRoom {
       const legacyKey = "playerAccount:251" + phone.slice(1);
       const account = await this.ctx.storage.get(key) || await this.ctx.storage.get(legacyKey);
       if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
-      const attemptHash = await hashPassword(password, account.salt);
+      const attemptHash = await hashPassword(password, account.salt, account.iterations);
       if (attemptHash !== account.passwordHash) {
         failures.count = (Number(failures.count)||0) + 1;
         if (failures.count >= 6) { failures.count = 0; failures.lockedUntil = Date.now() + 15*60*1000; }
