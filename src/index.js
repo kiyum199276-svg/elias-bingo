@@ -310,6 +310,8 @@ export class BingoRoom {
     }
 
     if (data.type === "PLAYER_REGISTER") {
+      let currentIdentity = null; try { currentIdentity = sender.deserializeAttachment(); } catch {}
+      if (currentIdentity?.role === "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin connections cannot register player accounts."})); return; }
       const phone = normalizePhone(data.phone), password = String(data.password || ""), name = String(data.name || "").trim().slice(0,60);
       const playerId = String(data.playerId || "").slice(0,100), playerToken = String(data.playerToken || "");
       if (!phone || password.length < 8 || password.length > 128 || !name || !playerId || playerToken.length < 32) {
