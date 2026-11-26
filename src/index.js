@@ -150,7 +150,7 @@ export class BingoRoom {
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
       const enabled = data.enabled === true;
       const amount = Number(data.amount);
-      const currency = String(data.currency || "ETB").slice(0, 8);
+      const currency = "ETB";
       const method = ["Telebirr","CBE Birr","E-Birr"].includes(data.method) ? data.method : "Telebirr";
       const account = String(data.account || "").trim().slice(0, 100);
       if (enabled && (!Number.isFinite(amount) || amount <= 0 || !account)) {
