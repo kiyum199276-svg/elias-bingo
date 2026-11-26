@@ -316,6 +316,7 @@ export class BingoRoom {
       const requested=Array.isArray(data.cards)?[...new Set(data.cards.map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=300))]:[];
       const price=Number(this.roomState.cardPrice);
       if(!player||!requested.length){sender.send(JSON.stringify({type:"ERROR",message:"Connect to the game and select at least one card"}));return;}
+      if(!this.roomState.depositConfig?.enabled){sender.send(JSON.stringify({type:"ERROR",message:"Card selection and wallet purchases are disabled while Deposit is OFF. The Admin assigns cards."}));return;}
       if(!Number.isFinite(price)||price<=0){sender.send(JSON.stringify({type:"ERROR",message:"The Admin has not set a card price yet"}));return;}
       if(this.roomState.depositConfig?.enabled&&!player.depositApproved){sender.send(JSON.stringify({type:"ERROR",message:"Your deposit must be approved before buying cards"}));return;}
       const already=new Set(player.approvedCards||[]),cards=requested.filter(n=>!already.has(n));
@@ -331,6 +332,22 @@ export class BingoRoom {
       for(const n of cards)this.roomState.cards[String(n)]={playerId,status:"approved"};
       await this.saveState();this.broadcast({type:"ROOM_STATE",data:this.roomState});
       sender.send(JSON.stringify({type:"CARD_PURCHASE_SUCCESS",cards,total,balance:player.walletBalance}));return;
+    }
+    if (data.type === "ADMIN_ASSIGN_CARD") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      if (this.roomState.depositConfig?.enabled) { sender.send(JSON.stringify({type:"ERROR",message:"Admin card assignment is only available while Deposit is OFF."})); return; }
+      const playerId=String(data.playerId||"").slice(0,100),cardNumber=Number(data.cardNumber),player=this.roomState.players[playerId];
+      if(!player||!Number.isInteger(cardNumber)||cardNumber<1||cardNumber>300){sender.send(JSON.stringify({type:"ERROR",message:"Choose a valid player and card number from 1 to 300."}));return;}
+      const currentOwner=this.roomState.cards[String(cardNumber)];
+      const ownerId=currentOwner&&(typeof currentOwner==="string"?currentOwner:currentOwner.playerId);
+      if(ownerId&&ownerId!==playerId){sender.send(JSON.stringify({type:"ERROR",message:"This card is already assigned to another player."}));return;}
+      player.approvedCards=[...new Set([...(player.approvedCards||[]),cardNumber])].sort((x,y)=>x-y);
+      player.selectedCards=[...player.approvedCards];player.selectedCard=player.approvedCards[0]||null;
+      player.pendingCards=(player.pendingCards||[]).filter(n=>Number(n)!==cardNumber);
+      this.roomState.cards[String(cardNumber)]={playerId,status:"approved",assignedByAdmin:true,createdAt:Date.now()};
+      await this.saveState();this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"ADMIN_CARD_ASSIGNED",playerId,cardNumber}));return;
     }
     if (data.type === "ADMIN_SYNC_STATE") {
       let role = null;
