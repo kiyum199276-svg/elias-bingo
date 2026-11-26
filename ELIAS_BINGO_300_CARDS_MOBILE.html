@@ -164,8 +164,11 @@ let myWithdrawals=[];
 let approvedCards=[];
 let pendingCards=[];
 const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
+const PLAYER_TOKEN_KEY="eliasBingoPlayerTokenV1";
 let playerId=localStorage.getItem(PLAYER_ID_KEY);
 if(!playerId){playerId=(crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2));localStorage.setItem(PLAYER_ID_KEY,playerId)}
+let playerToken=localStorage.getItem(PLAYER_TOKEN_KEY);
+if(!playerToken){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);playerToken=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");localStorage.setItem(PLAYER_TOKEN_KEY,playerToken)}
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.value=localStorage.getItem("eliasBingoPlayerNameV1")||""}catch(e){}
 function renderDepositPanel(){
  const panel=document.getElementById("depositPanel"),details=document.getElementById("depositDetails"),status=document.getElementById("depositStatus"),input=document.getElementById("depositReference"),button=document.getElementById("submitDeposit");
@@ -203,7 +206,7 @@ function connectToGame(){
     localStorage.setItem("eliasBingoGameIdV1",gameId);
     localStorage.setItem("eliasBingoPlayerNameV1",playerName);
     connectionStatus.textContent="Connected / ተገናኝቷል";
-    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,name:playerName}));
+    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,playerToken,name:playerName}));
   });
   roomSocket.addEventListener("message",event=>{
     let message;try{message=JSON.parse(event.data)}catch(e){return}
