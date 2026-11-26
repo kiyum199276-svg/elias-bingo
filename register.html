@@ -17,11 +17,11 @@ button,a.link{display:block;width:100%;padding:14px;border:0;border-radius:10px;
 <body>
 <main>
 <h1>ELIAS BINGO</h1>
-<p><strong>Create your player account</strong><br>Register once with your Game ID, phone number and password.</p>
+<p><strong>Create your player account</strong><br>Use your Admin’s permanent Game ID, phone number and password.</p>
 <label for="gameId">Game ID</label><input id="gameId" autocomplete="off" placeholder="Enter Game ID">
-<label for="playerName">Player name</label><input id="playerName" autocomplete="name" placeholder="Your name">
 <label for="phone">Phone number</label><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Your phone number">
 <label for="password">Create password</label><input id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+<label for="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" autocomplete="new-password" placeholder="Enter password again">
 <button id="register" type="button">Create account</button>
 <div id="status" role="status">Fill in all fields to register.</div>
 <div id="success">Your account has been created. Keep your phone number and password safe. You can now log in to play.</div>
@@ -31,7 +31,7 @@ button,a.link{display:block;width:100%;padding:14px;border:0;border-radius:10px;
 <script>
 "use strict";
 const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
-const gameInput=document.getElementById("gameId"),nameInput=document.getElementById("playerName"),phoneInput=document.getElementById("phone"),passwordInput=document.getElementById("password"),status=document.getElementById("status");
+const gameInput=document.getElementById("gameId"),phoneInput=document.getElementById("phone"),passwordInput=document.getElementById("password"),confirmInput=document.getElementById("confirmPassword"),status=document.getElementById("status"),registerButton=document.getElementById("register");
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";}catch(e){}
 function getPlayerId(){
  let id=localStorage.getItem("eliasBingoPlayerIdV1");
@@ -43,32 +43,45 @@ function getPlayerToken(){
  if(!token){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);token=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");localStorage.setItem("eliasBingoPlayerTokenV1",token);}
  return token;
 }
-document.getElementById("register").addEventListener("click",()=>{
- const gameId=gameInput.value.trim(),name=nameInput.value.trim(),phone=phoneInput.value.trim(),password=passwordInput.value;
- if(!gameId||!name||!phone||!password){status.textContent="Please fill in Game ID, player name, phone number and password.";return;}
- if(password.length<8){status.textContent="Password must be at least 8 characters.";return;}
- status.textContent="Connecting to your game…";
- const socket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));
+registerButton.addEventListener("click",()=>{
+ const gameId=gameInput.value.trim(),phone=phoneInput.value.trim(),password=passwordInput.value,confirmPassword=confirmInput.value;
+ if(!gameId||!phone||!password||!confirmPassword){status.textContent="Please enter Game ID, phone number, password and confirm password.";return;}
+ if(password.length<8||password.length>128){status.textContent="Password must be 8 to 128 characters.";return;}
+ if(password!==confirmPassword){status.textContent="Passwords do not match.";return;}
+ registerButton.disabled=true;status.textContent="Connecting to your game…";
+ let finished=false;
+ let socket;
+ try{socket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}
+ catch(e){registerButton.disabled=false;status.textContent="Could not connect. Check the Game ID and try again.";return;}
+ const timeout=setTimeout(()=>{if(finished)return;finished=true;try{socket.close()}catch(e){}registerButton.disabled=false;status.textContent="The server did not reply. Please try again.";},30000);
  socket.addEventListener("open",()=>{
   localStorage.setItem("eliasBingoGameIdV1",gameId);
-  localStorage.setItem("eliasBingoPlayerNameV1",name);
   status.textContent="Creating your account…";
-  socket.send(JSON.stringify({type:"PLAYER_REGISTER",phone,password,name,playerId:getPlayerId(),playerToken:getPlayerToken()}));
+  socket.send(JSON.stringify({type:"PLAYER_REGISTER",phone,password,playerId:getPlayerId(),playerToken:getPlayerToken()}));
  });
  socket.addEventListener("message",event=>{
   let message;try{message=JSON.parse(event.data)}catch(e){return;}
   if(message.type==="PLAYER_AUTH_OK"){
+   if(finished)return;finished=true;clearTimeout(timeout);
    document.getElementById("success").style.display="block";
-   status.textContent="Registration successful.";
-   document.getElementById("register").disabled=true;
-   document.getElementById("register").textContent="Account created";
-   passwordInput.value="";
+   status.textContent="Registration successful. Your phone number is your player name.";
+   registerButton.disabled=true;registerButton.textContent="Account created";
+   passwordInput.value="";confirmInput.value="";
+   try{socket.close()}catch(e){}
   }else if(message.type==="ERROR"){
+   if(finished)return;finished=true;clearTimeout(timeout);
    status.textContent=message.message||"Registration failed.";
+   registerButton.disabled=false;try{socket.close()}catch(e){}
   }
  });
- socket.addEventListener("error",()=>{status.textContent="Connection error. Check the Game ID and try again.";});
- socket.addEventListener("close",()=>{if(!document.getElementById("register").disabled&&!status.textContent.startsWith("Registration successful"))status.textContent="Disconnected. Please try again.";});
+ socket.addEventListener("error",()=>{
+  if(finished)return;finished=true;clearTimeout(timeout);registerButton.disabled=false;
+  status.textContent="Connection error. Check your internet and Game ID.";
+ });
+ socket.addEventListener("close",()=>{
+  clearTimeout(timeout);
+  if(!finished){finished=true;registerButton.disabled=false;status.textContent="Disconnected before the server confirmed registration. Please try again.";}
+ });
 });
 </script>
 </body>
