@@ -79,7 +79,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
   <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
 </section>
-<div id="winningPattern" class="pattern-banner" hidden></div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
+<div id="winningPattern" class="pattern-banner" hidden></div><div id="gamePrizeInfo" class="panel" style="margin:10px 0;padding:12px;border:2px solid #d6a72b;background:#fff8df;color:#352b13;font-weight:700" hidden>Card price: — • Total winning prize pool: —</div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
 <div class="actions"><button id="fullBtn" type="button">Full Screen</button></div>
 <p class="note">የካርድ ምልክቶች አሁንም በዚህ ስልክ ላይ ይቀመጣሉ። የAdmin ጥሪዎች ከተገናኙ በቀጥታ እዚህ ይታያሉ።</p>
 </main>
@@ -97,7 +97,7 @@ try{saved=JSON.parse(localStorage.getItem(STORE_KEY)||"{}")||{}}catch(e){saved={
 for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=String(n);opt.textContent="ካርድ "+n;select.appendChild(opt)}
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
 document.getElementById("clearAllMarks").addEventListener("click",()=>{if(!confirm("Clear all your marked numbers on every card?"))return;saved={};save();render();});
-function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";const info=document.getElementById("cardPurchaseInfo");if(info)info.textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");}
+function updateGamePrizeInfo(room){const el=document.getElementById("gamePrizeInfo");if(!el)return;const owners=new Set();Object.values(room&&room.players||{}).forEach(player=>{(Array.isArray(player&&player.approvedCards)?player.approvedCards:[]).forEach(n=>{const card=Number(n);if(Number.isInteger(card)&&card>=1&&card<=300)owners.add(card);});});const sold=owners.size,pool=cardPrice>0?cardPrice*sold:0;el.hidden=false;el.textContent="Card price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB":"Not set by Admin")+" • Total winning prize pool: "+(cardPrice>0?pool.toFixed(2)+" ETB":"—")+" • Cards purchased: "+sold;}\nfunction updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";const info=document.getElementById("cardPurchaseInfo");if(info)info.textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");}
 document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();render();}else{alert("Card "+n+" is already selected.");}});
 const PATTERN_NAMES={"6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any Line","2v2h":"2 Up + 2 Row","3v3h":"3 Up + 3 Row","different":"4 Different Lines","blackout":"Blackout","fourcorners":"Four Corners","xpattern":"X Pattern","plus":"Plus / Cross","topbottom":"Top + Bottom","frame":"Outside Frame","innerbox":"Inner Box","postage":"Postage Stamp"};
 const PATTERN_CELLS={"blackout":[...Array(25).keys()],"fourcorners":[0,4,20,24],"xpattern":[0,6,12,18,24,4,8,16,20],"plus":[2,7,10,11,12,13,14,17,22],"topbottom":[0,1,2,3,4,20,21,22,23,24],"frame":[0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24],"innerbox":[6,7,8,11,13,16,17,18]};
@@ -246,6 +246,8 @@ function connectToGame(){
       renderWalletPanel();
       approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
       pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
+      updateGamePrizeInfo(message.data);
+      updateSelectedCards();
       showCalledNumbers();render();
       if(me)connectionStatus.textContent="Logged in as "+(me.name||phone);
     }
