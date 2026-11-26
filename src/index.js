@@ -18,14 +18,66 @@ async function hashPassword(password, saltHex, iterations = PASSWORD_ITERATIONS)
   return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
 }
 
-export default {
+
+const OWNER_PHONE = "0977320235";
+const OWNER_ORIGIN = "https://elias-bingo.pages.dev";
+function b64url(bytes) {
+  let binary = ""; for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");
+}
+function fromB64url(value) {
+  const raw = atob(value.replace(/-/g,"+").replace(/_/g,"/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function ownerToken(payload, secret) {
+  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const sig = await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(body));
+  return body+"."+b64url(new Uint8Array(sig));
+}
+async function verifyOwnerToken(token, secret) {
+  try {
+    const [body,signature] = String(token||"").split(".");
+    if (!body || !signature) return false;
+    const key = await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["verify"]);
+    const valid = await crypto.subtle.verify("HMAC",key,fromB64url(signature),new TextEncoder().encode(body));
+    if (!valid) return false;
+    const payload = JSON.parse(new TextDecoder().decode(fromB64url(body)));
+    return payload.phone===OWNER_PHONE && payload.exp>Date.now();
+  } catch { return false; }
+}
+function ownerJson(data,status=200) {
+  return new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
+}
+\nexport default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/owner/") || request.method === "OPTIONS") {
+      if (request.method === "OPTIONS") return ownerJson({},204);
+      if (url.pathname === "/owner/login" && request.method === "POST") {
+        if (!env.OWNER_PASSWORD || !env.OWNER_SESSION_SECRET) return ownerJson({error:"Owner login is not configured yet. Set OWNER_PASSWORD and OWNER_SESSION_SECRET in Cloudflare Worker secrets."},503);
+        let body={}; try { body=await request.json(); } catch {}
+        const phone=normalizePhone(body.phone), password=String(body.password||"");
+        if (phone!==OWNER_PHONE || password!==env.OWNER_PASSWORD) return ownerJson({error:"Phone number or password is incorrect."},401);
+        const token=await ownerToken({phone:OWNER_PHONE,exp:Date.now()+8*60*60*1000},env.OWNER_SESSION_SECRET);
+        return ownerJson({token,expiresIn:28800});
+      }
+      const auth=(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");
+      if (!env.OWNER_SESSION_SECRET || !await verifyOwnerToken(auth,env.OWNER_SESSION_SECRET)) return ownerJson({error:"Owner login required."},401);
+      if (url.pathname === "/owner/games" && request.method === "GET") {
+        const id=env.OWNER_REGISTRY.idFromName("global");
+        const response=await env.OWNER_REGISTRY.get(id).fetch("https://registry/list");
+        return new Response(response.body,{status:response.status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
+      }
+      return ownerJson({error:"Owner endpoint not found."},404);
+    }
     if (url.pathname === "/") return new Response("ELIAS BINGO SERVER ONLINE");
     if (url.pathname.startsWith("/room/")) {
       if (request.headers.get("Upgrade") !== "websocket") return new Response("WebSocket connection required", { status: 426 });
       const roomId = decodeURIComponent(url.pathname.slice("/room/".length));
       if (!roomId) return new Response("Missing Game ID", { status: 400 });
+      const registryId=env.OWNER_REGISTRY.idFromName("global");
+      await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({gameId:roomId})});
       const id = env.BINGO_ROOMS.idFromName(roomId);
       return env.BINGO_ROOMS.get(id).fetch(request);
     }
@@ -431,4 +483,26 @@ export class BingoRoom {
   }
   webSocketClose() {}
   webSocketError() {}
+}
+
+export class OwnerRegistry {
+  constructor(ctx,env) { this.ctx=ctx; this.env=env; this.ready=this.ctx.blockConcurrencyWhile(async()=>{this.games=await this.ctx.storage.get("games")||{};}); }
+  async fetch(request) {
+    await this.ready;
+    const url=new URL(request.url);
+    if (url.pathname==="/register" && request.method==="POST") {
+      let body={}; try {body=await request.json();} catch {}
+      const gameId=String(body.gameId||"").trim().slice(0,80);
+      if (!/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return new Response(JSON.stringify({error:"Invalid Game ID"}),{status:400});
+      const previous=this.games[gameId]||{};
+      this.games[gameId]={gameId,firstSeen:previous.firstSeen||Date.now(),lastSeen:Date.now()};
+      await this.ctx.storage.put("games",this.games);
+      return new Response(JSON.stringify({ok:true}));
+    }
+    if (url.pathname==="/list" && request.method==="GET") {
+      const games=Object.values(this.games).sort((a,b)=>b.lastSeen-a.lastSeen);
+      return new Response(JSON.stringify({games}),{headers:{"Content-Type":"application/json"}});
+    }
+    return new Response("Not found",{status:404});
+  }
 }
