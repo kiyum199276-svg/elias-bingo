@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10243a">
+<title>ELIAS BINGO - Player Registration</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f3f6fa;color:#15263a;font-family:Arial,sans-serif;display:grid;place-items:center;padding:18px}
+main{width:min(100%,440px);background:#fff;border:1px solid #d6dee8;border-radius:18px;padding:22px;box-shadow:0 4px 18px #10243a12}
+h1{text-align:center;color:#173b62;margin:0 0 6px}p{color:#526579;line-height:1.5;text-align:center}
+label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;padding:13px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px}
+button,a.link{display:block;width:100%;padding:14px;border:0;border-radius:10px;background:#173b62;color:#fff;text-align:center;font-weight:700;font-size:16px;text-decoration:none;margin-top:14px}
+#status{font-size:14px;overflow-wrap:anywhere;margin-top:12px}#success{display:none;background:#e8f7ed;border:1px solid #a7d9b5;color:#14532d;padding:12px;border-radius:10px;margin-top:14px}
+</style>
+</head>
+<body>
+<main>
+<h1>ELIAS BINGO</h1>
+<p><strong>Create your player account</strong><br>Register once with your Game ID, phone number and password.</p>
+<label for="gameId">Game ID</label><input id="gameId" autocomplete="off" placeholder="Enter Game ID">
+<label for="playerName">Player name</label><input id="playerName" autocomplete="name" placeholder="Your name">
+<label for="phone">Phone number</label><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Your phone number">
+<label for="password">Create password</label><input id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+<button id="register" type="button">Create account</button>
+<div id="status" role="status">Fill in all fields to register.</div>
+<div id="success">Your account has been created. Keep your phone number and password safe. You can now log in to play.</div>
+<a class="link" href="ELIAS_BINGO_300_CARDS_MOBILE.html">Go to Player Login</a>
+<a class="link" href="index.html" style="background:#e8eef5;color:#15263a">Back to First Page</a>
+</main>
+<script>
+"use strict";
+const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
+const gameInput=document.getElementById("gameId"),nameInput=document.getElementById("playerName"),phoneInput=document.getElementById("phone"),passwordInput=document.getElementById("password"),status=document.getElementById("status");
+try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";}catch(e){}
+function getPlayerId(){
+ let id=localStorage.getItem("eliasBingoPlayerIdV1");
+ if(!id){id=crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2);localStorage.setItem("eliasBingoPlayerIdV1",id);}
+ return id;
+}
+function getPlayerToken(){
+ let token=localStorage.getItem("eliasBingoPlayerTokenV1");
+ if(!token){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);token=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");localStorage.setItem("eliasBingoPlayerTokenV1",token);}
+ return token;
+}
+document.getElementById("register").addEventListener("click",()=>{
+ const gameId=gameInput.value.trim(),name=nameInput.value.trim(),phone=phoneInput.value.trim(),password=passwordInput.value;
+ if(!gameId||!name||!phone||!password){status.textContent="Please fill in Game ID, player name, phone number and password.";return;}
+ if(password.length<8){status.textContent="Password must be at least 8 characters.";return;}
+ status.textContent="Connecting to your game…";
+ const socket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));
+ socket.addEventListener("open",()=>{
+  localStorage.setItem("eliasBingoGameIdV1",gameId);
+  localStorage.setItem("eliasBingoPlayerNameV1",name);
+  status.textContent="Creating your account…";
+  socket.send(JSON.stringify({type:"PLAYER_REGISTER",phone,password,name,playerId:getPlayerId(),playerToken:getPlayerToken()}));
+ });
+ socket.addEventListener("message",event=>{
+  let message;try{message=JSON.parse(event.data)}catch(e){return;}
+  if(message.type==="PLAYER_AUTH_OK"){
+   document.getElementById("success").style.display="block";
+   status.textContent="Registration successful.";
+   document.getElementById("register").disabled=true;
+   document.getElementById("register").textContent="Account created";
+   passwordInput.value="";
+  }else if(message.type==="ERROR"){
+   status.textContent=message.message||"Registration failed.";
+  }
+ });
+ socket.addEventListener("error",()=>{status.textContent="Connection error. Check the Game ID and try again.";});
+ socket.addEventListener("close",()=>{if(!document.getElementById("register").disabled&&!status.textContent.startsWith("Registration successful"))status.textContent="Disconnected. Please try again.";});
+});
+</script>
+</body>
+</html>
