@@ -6,7 +6,7 @@ main{max-width:760px;margin:25px auto;background:#17263b;border-radius:16px;padd
 h1{margin-top:0;color:#f4c542}p{color:#cbd5e1;line-height:1.5}
 label{display:block;margin:14px 0 6px}input,button{width:100%;padding:13px;border:0;border-radius:8px;font-size:16px}
 input{background:#fff;color:#17243a}button{margin-top:14px;background:#f4c542;color:#17243a;font-weight:bold;cursor:pointer}
-#message{margin-top:12px;color:#fbbf24;white-space:pre-wrap}#dashboard{display:none}#games{padding:0;list-style:none}
+#message{margin-top:12px;color:#fbbf24;white-space:pre-wrap}#dashboard{display:none}#games{padding:0;list-style:none}#details{display:none;margin-top:18px;background:#20334c;padding:14px;border-radius:10px;overflow-x:auto}table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}th,td{text-align:left;padding:9px;border-bottom:1px solid #40536b}th{color:#f4c542} .view{width:auto;margin:0;padding:9px 12px;font-size:14px}
 .game{background:#243750;margin:10px 0;padding:14px;border-radius:10px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
 small{color:#cbd5e1}.muted{font-size:13px;color:#9fb0c5}
 </style></head><body><main>
@@ -19,7 +19,7 @@ small{color:#cbd5e1}.muted{font-size:13px;color:#9fb0c5}
 </section>
 <section id="dashboard">
 <h2>All registered games</h2><p class="muted">Game IDs are added automatically when an Admin or player connects to a game.</p>
-<button id="refresh">Refresh game list</button><ul id="games"></ul>
+<button id="refresh">Refresh game list</button><ul id="games"></ul><section id="details"><h2 id="detailTitle">Game details</h2><div id="summary"></div><h3>Players</h3><div id="playerTable"></div><h3>Deposit requests</h3><div id="depositTable"></div><h3>Withdrawals</h3><div id="withdrawalTable"></div></section>
 <button id="logout" style="background:#d9e2ef">Log out</button>
 </section>
 <div id="message" role="status"></div>
@@ -44,7 +44,8 @@ async function loadGames(){
    const li=document.createElement("li");li.className="game";
    const name=document.createElement("strong");name.textContent=game.gameId;
    const meta=document.createElement("small");meta.textContent="Last seen: "+new Date(game.lastSeen).toLocaleString();
-   li.append(name,meta);$("games").appendChild(li);
+   const view=document.createElement("button");view.className="view";view.textContent="View players & report";view.addEventListener("click",()=>loadGame(game.gameId));
+   li.append(name,meta,view);$("games").appendChild(li);
   }
   showError("");
  }catch(error){showError(error.message)}
@@ -57,6 +58,28 @@ $("loginButton").addEventListener("click",async()=>{
  }catch(error){showError(error.message)}
  finally{$("loginButton").disabled=false}
 });
+async function renderTable(target,items,columns){
+ const host=$(target);host.innerHTML="";
+ if(!items||!items.length){host.textContent="No records.";return}
+ const table=document.createElement("table"),head=document.createElement("tr");
+ for(const col of columns){const th=document.createElement("th");th.textContent=col.label;head.appendChild(th)}
+ const thead=document.createElement("thead");thead.appendChild(head);table.appendChild(thead);
+ const body=document.createElement("tbody");
+ for(const item of items){const tr=document.createElement("tr");for(const col of columns){const td=document.createElement("td");let value=item[col.key];if(col.date)value=value?new Date(value).toLocaleString():"—";if(col.money)value=Number(value||0).toFixed(2)+" ETB";if(col.boolean)value=value?"Yes":"No";td.textContent=value===undefined||value===null?"—":String(value);tr.appendChild(td)}body.appendChild(tr)}
+ table.appendChild(body);host.appendChild(table);
+}
+async function loadGame(gameId){
+ try{
+  showError("Loading "+gameId+"...");
+  const data=await request("/owner/game?gameId="+encodeURIComponent(gameId));
+  $("details").style.display="block";$("detailTitle").textContent="Game: "+data.gameId;
+  $("summary").textContent="Round: "+data.gameRound+" | Card price: "+Number(data.cardPrice||0).toFixed(2)+" ETB | Players: "+data.players.length+" | Last game update: "+(data.updatedAt?new Date(data.updatedAt).toLocaleString():"—");
+  await renderTable("playerTable",data.players,[{key:"name",label:"Player"},{key:"playerId",label:"Player ID"},{key:"walletBalance",label:"Wallet",money:true},{key:"approvedCards",label:"Cards"},{key:"depositApproved",label:"Deposit approved",boolean:true},{key:"lastLoginAt",label:"Last login",date:true}]);
+  await renderTable("depositTable",data.deposits,[{key:"playerName",label:"Player"},{key:"amount",label:"Amount",money:true},{key:"method",label:"Method"},{key:"status",label:"Status"},{key:"createdAt",label:"Date",date:true}]);
+  await renderTable("withdrawalTable",data.withdrawals,[{key:"playerName",label:"Player"},{key:"amount",label:"Amount",money:true},{key:"method",label:"Method"},{key:"status",label:"Status"},{key:"createdAt",label:"Date",date:true}]);
+  showError("");
+ }catch(error){showError(error.message)}
+}
 $("refresh").addEventListener("click",loadGames);
 $("logout").addEventListener("click",()=>{token="";$("dashboard").style.display="none";$("login").style.display="block";showError("You are logged out.")});
 </script></body></html>
