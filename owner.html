@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ELIAS BINGO Owner</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#fff;font-family:Arial,sans-serif;padding:18px}
+main{max-width:760px;margin:25px auto;background:#17263b;border-radius:16px;padding:20px;box-shadow:0 8px 30px #0005}
+h1{margin-top:0;color:#f4c542}p{color:#cbd5e1;line-height:1.5}
+label{display:block;margin:14px 0 6px}input,button{width:100%;padding:13px;border:0;border-radius:8px;font-size:16px}
+input{background:#fff;color:#17243a}button{margin-top:14px;background:#f4c542;color:#17243a;font-weight:bold;cursor:pointer}
+#message{margin-top:12px;color:#fbbf24;white-space:pre-wrap}#dashboard{display:none}#games{padding:0;list-style:none}
+.game{background:#243750;margin:10px 0;padding:14px;border-radius:10px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+small{color:#cbd5e1}.muted{font-size:13px;color:#9fb0c5}
+</style></head><body><main>
+<h1>ELIAS BINGO OWNER</h1>
+<section id="login">
+<p>Owner sign-in. This page is separate from the Admin dashboard.</p>
+<label for="phone">Owner phone number</label><input id="phone" value="0977320235" inputmode="tel" autocomplete="username">
+<label for="password">Owner password</label><input id="password" type="password" autocomplete="current-password" placeholder="Enter Owner password">
+<button id="loginButton">Log in</button>
+</section>
+<section id="dashboard">
+<h2>All registered games</h2><p class="muted">Game IDs are added automatically when an Admin or player connects to a game.</p>
+<button id="refresh">Refresh game list</button><ul id="games"></ul>
+<button id="logout" style="background:#d9e2ef">Log out</button>
+</section>
+<div id="message" role="status"></div>
+</main><script>
+"use strict";
+const API="https://elias-bingo.elum199276kk.workers.dev";
+const $=id=>document.getElementById(id);
+let token="";
+function showError(message){$("message").textContent=message}
+async function request(path,options={}) {
+ const response=await fetch(API+path,{...options,headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{}),...(options.headers||{})}});
+ const data=await response.json().catch(()=>({error:"Server returned an invalid response."}));
+ if(!response.ok)throw new Error(data.error||"Request failed ("+response.status+")");
+ return data;
+}
+async function loadGames(){
+ try{
+  const data=await request("/owner/games");
+  $("games").innerHTML="";
+  if(!data.games||!data.games.length){$("games").innerHTML="<li class='game'>No games have connected yet.</li>";return}
+  for(const game of data.games){
+   const li=document.createElement("li");li.className="game";
+   const name=document.createElement("strong");name.textContent=game.gameId;
+   const meta=document.createElement("small");meta.textContent="Last seen: "+new Date(game.lastSeen).toLocaleString();
+   li.append(name,meta);$("games").appendChild(li);
+  }
+  showError("");
+ }catch(error){showError(error.message)}
+}
+$("loginButton").addEventListener("click",async()=>{
+ showError("");$("loginButton").disabled=true;
+ try{
+  const data=await request("/owner/login",{method:"POST",body:JSON.stringify({phone:$("phone").value,password:$("password").value})});
+  token=data.token;$("login").style.display="none";$("dashboard").style.display="block";$("password").value="";await loadGames();
+ }catch(error){showError(error.message)}
+ finally{$("loginButton").disabled=false}
+});
+$("refresh").addEventListener("click",loadGames);
+$("logout").addEventListener("click",()=>{token="";$("dashboard").style.display="none";$("login").style.display="block";showError("You are logged out.")});
+</script></body></html>
