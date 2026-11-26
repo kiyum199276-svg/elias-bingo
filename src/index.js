@@ -70,6 +70,7 @@ export default {
     if (url.pathname.startsWith("/owner/") || url.pathname === "/admin/login" || request.method === "OPTIONS") {
       if (request.method === "OPTIONS") return ownerJson({},204);
       if (url.pathname === "/admin/login" && request.method === "POST") {
+        if (!env.OWNER_SESSION_SECRET) return ownerJson({error:"Admin login is not configured. Owner session secret is missing."},503);
         let body={}; try { body=await request.json(); } catch {}
         const phone=normalizePhone(body.phone), password=String(body.password||""), gameId=String(body.gameId||"").trim();
         if (!phone || password.length<8 || !/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) return ownerJson({error:"Enter a valid phone, password, and Game ID."},400);
@@ -79,6 +80,7 @@ export default {
         if (!accountResponse.ok || !account || !account.active) return ownerJson({error:"Admin account is not active or does not match this Game ID."},401);
         const attempt=await hashPassword(password,account.salt,account.iterations);
         if (attempt!==account.passwordHash) return ownerJson({error:"Phone number or password is incorrect."},401);
+        await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-touch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,gameId,lastLoginAt:Date.now()})});
         const token=await ownerToken({role:"admin",phone,gameId,exp:Date.now()+8*60*60*1000},env.OWNER_SESSION_SECRET);
         return ownerJson({token,gameId,expiresIn:28800});
       }
@@ -210,6 +212,13 @@ export class BingoRoom {
     let data;
     try { data = JSON.parse(String(message)); }
     catch { sender.send(JSON.stringify({ type: "ERROR", message: "Invalid JSON" })); return; }
+    let currentAdmin=null;try{currentAdmin=sender.deserializeAttachment();}catch{}
+    if(currentAdmin?.role==="admin" && currentAdmin.authType==="account"){
+      const registryId=this.env.OWNER_REGISTRY.idFromName("global");
+      const check=await this.env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-active?phone="+encodeURIComponent(currentAdmin.adminPhone||"")+"&gameId="+encodeURIComponent(this.roomState.gameId||""));
+      const state=await check.json().catch(()=>({active:false}));
+      if(!check.ok||!state.active){sender.send(JSON.stringify({type:"ERROR",message:"This Admin account has been disabled. Contact the Owner."}));return;}
+    }
     if (data.type === "GET_STATE") {
       sender.send(JSON.stringify({ type: "ROOM_STATE", data: this.roomState })); return;
     }
@@ -597,6 +606,17 @@ export class OwnerRegistry {
       this.admins[phone]={phone,gameId,salt:body.salt,passwordHash:body.passwordHash,iterations:body.iterations||PASSWORD_ITERATIONS,active:true,createdAt:body.createdAt||Date.now()};
       await this.ctx.storage.put("admins",this.admins);
       return new Response(JSON.stringify({ok:true,message:"Admin account created."}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/admin-active" && request.method==="GET"){
+      const account=this.admins[String(url.searchParams.get("phone")||"")];
+      const active=!!(account&&account.gameId===String(url.searchParams.get("gameId")||"")&&account.active);
+      return new Response(JSON.stringify({active}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/admin-touch" && request.method==="POST"){
+      let body={};try{body=await request.json()}catch{}
+      const account=this.admins[String(body.phone||"")];
+      if(account&&account.gameId===String(body.gameId||"")){account.lastLoginAt=Number(body.lastLoginAt)||Date.now();await this.ctx.storage.put("admins",this.admins);}
+      return new Response(JSON.stringify({ok:true}),{headers:{"Content-Type":"application/json"}});
     }
     if(url.pathname==="/admin-get" && request.method==="POST"){
       let body={};try{body=await request.json()}catch{}
