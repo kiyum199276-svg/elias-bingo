@@ -101,7 +101,7 @@ export class BingoRoom {
       if(this.roomState.depositConfig?.enabled&&!player.depositApproved){sender.send(JSON.stringify({type:"ERROR",message:"Your deposit must be approved before buying cards"}));return;}
       const already=new Set(player.approvedCards||[]),cards=requested.filter(n=>!already.has(n));
       if(!cards.length){sender.send(JSON.stringify({type:"ERROR",message:"You already own all selected cards"}));return;}
-      const unavailable=cards.filter(n=>{const owner=this.roomState.cards[String(n)];return owner&&owner.playerId!==playerId;});
+      const unavailable=cards.filter(n=>{const owner=this.roomState.cards[String(n)];if(!owner)return false;const ownerId=typeof owner==="string"?owner:owner.playerId;return ownerId!==playerId;});
       if(unavailable.length){sender.send(JSON.stringify({type:"ERROR",message:"These cards are unavailable: "+unavailable.join(", ")}));return;}
       const total=price*cards.length,balance=Number(player.walletBalance)||0;
       if(balance<total){sender.send(JSON.stringify({type:"ERROR",message:"Insufficient balance. Need "+total.toFixed(2)+" ETB; available "+balance.toFixed(2)+" ETB."}));return;}
