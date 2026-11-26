@@ -123,8 +123,8 @@ export class BingoRoom {
         joinedAt:Number(p.joinedAt)||0,lastLoginAt:Number(p.lastLoginAt)||0,
         depositApproved:!!p.depositApproved
       }));
-      const deposits=Object.values(this.roomState.deposits||{}).map(d=>({playerName:String(d.playerName||""),amount:Number(d.amount)||0,status:String(d.status||""),createdAt:Number(d.createdAt)||0,method:String(d.method||"")}));
-      const withdrawals=Object.values(this.roomState.withdrawals||{}).map(w=>({playerName:String(w.playerName||""),amount:Number(w.amount)||0,status:String(w.status||""),createdAt:Number(w.createdAt)||0,method:String(w.method||"")}));
+      const deposits=Object.values(this.roomState.deposits||{}).map(d=>({playerName:String(d.playerName||""),amount:Number(d.amount)||0,status:String(d.status||""),createdAt:Number(d.createdAt)||0,method:String(d.method||""),currency:String(d.currency||"ETB")}));
+      const withdrawals=Object.values(this.roomState.withdrawals||{}).map(w=>({playerName:String(w.playerName||""),amount:Number(w.amount)||0,status:String(w.status||""),createdAt:Number(w.createdAt)||0,method:String(w.method||""),currency:String(w.currency||"ETB")}));
       const sumByCurrency=(items,acceptedStatuses)=>{
         const totals={};
         for(const item of items){
