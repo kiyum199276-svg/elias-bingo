@@ -290,7 +290,7 @@ document.getElementById("submitDeposit").addEventListener("click",()=>{
  roomSocket.send(JSON.stringify({type:"DEPOSIT_REQUEST",playerId,reference}));
  document.getElementById("depositStatus").textContent="Sending payment reference…";
 });
-connectBtn.addEventListener("click",connectToGame);
+
 render();
 updateSelectedCards();
 showCalledNumbers();
