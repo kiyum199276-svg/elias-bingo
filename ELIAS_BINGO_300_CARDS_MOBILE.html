@@ -43,6 +43,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 .player-card .claim-status{font-size:10px}
 .current-call-circle{width:94px;height:94px;margin:12px auto;border-radius:50%;background:#080808;color:#fff;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;box-shadow:0 4px 12px #0003}
 @media(max-width:360px){main{padding:10px 8px 22px}.board{gap:3px;padding:5px}.cell{border-radius:6px}.player-card{padding:5px}.player-card .cell{font-size:10px}.player-card .letter{font-size:11px;min-height:19px}button{padding:11px 10px}.current-call-circle{width:82px;height:82px;font-size:36px}}
+.app-window{width:100%}.app-window[hidden]{display:none!important}#selectionPattern{margin:8px 0;padding:12px;border-radius:10px;background:#fff8df;color:#352b13;font-weight:700}#window2 .panel{margin-top:0}
 </style>
 <meta name="theme-color" content="#10243a">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -51,6 +52,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 <body>
 <header><h1>ELIAS BINGO</h1><p>የተጫዋች ካርድ</p></header>
 <main>
+<section id="window1" class="app-window">
 <section class="panel">
   <div style="display:grid;gap:8px;margin-bottom:12px">
     <input id="gameIdInput" placeholder="Game ID / የጨዋታ መለያ" autocomplete="off" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
@@ -61,7 +63,12 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
     <a href="register.html" style="display:block;text-align:center;padding:10px;color:#173b62;font-weight:700">Create a new player account / Register</a>
     <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Enter your Game ID, phone number and password to log in.</div>
     <div id="passwordChangePanel" hidden style="display:grid;gap:8px"><strong>Password reset required</strong><input id="newPlayerPasswordInput" type="password" autocomplete="new-password" placeholder="Choose a new password (8+ characters)" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px"><button id="changePlayerPasswordBtn" type="button">Save new password</button></div>
-  </div>
+</section>
+</section>
+<section id="window2" class="app-window" hidden>
+<section class="panel">
+  <h2>2. Card Selection</h2>
+  <div id="selectionPattern" class="pattern-banner">Game Pattern: Waiting for Admin</div>
   <div class="controls">
     <select id="cardSelect" aria-label="የካርድ ቁጥር"></select>
     <button id="showBtn" type="button">ካርዱን አሳይ</button>
@@ -89,10 +96,14 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <div id="withdrawalStatus" class="help">Winnings become available only after the Admin confirms your Bingo win.</div>
   <div id="withdrawalHistory" class="help"></div>
 </section>
+</section>
+<section id="window3" class="app-window" hidden>
+<h2>3. Live Game</h2>
 <div id="currentCallNumber" class="current-call-circle" aria-live="polite" aria-label="Last called number">—</div>
 <div id="winningPattern" class="pattern-banner" hidden></div><div id="gamePrizeInfo" class="panel" style="margin:10px 0;padding:12px;border:2px solid #d6a72b;background:#fff8df;color:#352b13;font-weight:700" hidden>Card price: — • Total winning prize pool: —</div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
 <div class="actions"><button id="fullBtn" type="button">Full Screen</button></div>
 <p class="note">የካርድ ምልክቶች አሁንም በዚህ ስልክ ላይ ይቀመጣሉ። የAdmin ጥሪዎች ከተገናኙ በቀጥታ እዚህ ይታያሉ።</p>
+</section>
 </main>
 <footer>ELIAS BINGO • 300 ካርዶች</footer>
 <script>
@@ -213,6 +224,7 @@ function renderWalletPanel(){
   const line=document.createElement("div");line.textContent=item.amount+" "+(item.currency||"ETB")+" • "+item.method+" • "+item.status.toUpperCase()+" • "+new Date(item.createdAt).toLocaleString();history.appendChild(line);
  });
 }
+function showPlayerWindow(which){["window1","window2","window3"].forEach(id=>{const el=document.getElementById(id);if(el)el.hidden=id!==which;});}
 function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
   const number=calledNumbers.length?Number(calledNumbers[calledNumbers.length-1]):null;
@@ -240,6 +252,7 @@ function connectToGame(){
       document.getElementById("passwordChangePanel").hidden=!message.mustChangePassword;
       passwordInput.value="";
       connectionStatus.textContent=message.mustChangePassword?"Password reset by Admin. Create a new password to continue.":"Player account connected.";
+      if(!message.mustChangePassword)showPlayerWindow("window2");
       if(message.mustChangePassword){document.getElementById("passwordChangePanel").scrollIntoView({behavior:"smooth",block:"center"});}
     }
     if(message.type==="PLAYER_PASSWORD_CHANGED"){
@@ -255,6 +268,7 @@ function connectToGame(){
       winningPattern=typeof message.data.pattern==="string"?message.data.pattern:"";
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
+      const patternView=document.getElementById("selectionPattern");if(patternView)patternView.textContent="Game Pattern: "+(winningPatternName||PATTERN_NAMES[winningPattern]||winningPattern||"Waiting for Admin");
       depositConfig=message.data.depositConfig||{enabled:false};cardPrice=Number(message.data.cardPrice)||0;
       document.getElementById("cardPurchaseInfo").textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");
       const allDeposits=message.data.deposits||{};
@@ -267,11 +281,13 @@ function connectToGame(){
       renderWalletPanel();
       approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
       pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
+      if(me&&!message.mustChangePassword)showPlayerWindow(approvedCards.length?"window3":"window2");
       updateGamePrizeInfo(message.data);
       updateSelectedCards();
       showCalledNumbers();render();
       if(me)connectionStatus.textContent="Logged in as "+(me.name||phone);
     }
+    if(message.type==="CARD_REQUEST_RESULT"){document.getElementById("purchaseStatus").textContent="Cash request sent to Admin. Please pay the Admin in cash and wait for approval.";selectedCards=[];updateSelectedCards();}
     if(message.type==="CARD_PURCHASE_SUCCESS"){document.getElementById("purchaseStatus").textContent="Purchase successful: cards "+message.cards.join(", ")+" • Paid "+Number(message.total).toFixed(2)+" ETB. Balance: "+Number(message.balance).toFixed(2)+" ETB.";selectedCards=[];updateSelectedCards();render();}
     if(message.type==="CARD_REQUEST_RESULT"){pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";render();}
     if(message.type==="ERROR"){document.getElementById("purchaseStatus").textContent=message.message||"Error";connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
