@@ -1,22 +1,16 @@
-
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "elias-bingo",\n  "vars": {\n    "OWNER_PHONE": "0977320235"\n  },
+  "name": "elias-bingo",
   "main": "src/index.js",
   "compatibility_date": "2026-11-25",
   "durable_objects": {
     "bindings": [
-      {
-        "name": "BINGO_ROOMS",
-        "class_name": "BingoRoom"
-      }
+      { "name": "BINGO_ROOMS", "class_name": "BingoRoom" },
+      { "name": "OWNER_REGISTRY", "class_name": "OwnerRegistry" }
     ]
   },
   "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["BingoRoom"]
-    }
+    { "tag": "v1", "new_sqlite_classes": ["BingoRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["OwnerRegistry"] }
   ]
 }
-
