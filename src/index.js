@@ -1,4 +1,20 @@
-export default {
+
+const PASSWORD_ITERATIONS = 210000;
+function normalizePhone(value) {
+  const phone = String(value || "").replace(/[\\s()+.-]/g, "");
+  return /^\\d{7,15}$/.test(phone) ? phone : "";
+}
+function randomHex(bytes = 32) {
+  const data = new Uint8Array(bytes); crypto.getRandomValues(data);
+  return Array.from(data, b => b.toString(16).padStart(2, "0")).join("");
+}
+async function hashPassword(password, saltHex) {
+  const salt = Uint8Array.from(saltHex.match(/.{2}/g).map(x => parseInt(x, 16)));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:PASSWORD_ITERATIONS}, key, 256);
+  return Array.from(new Uint8Array(bits), b => b.toString(16).padStart(2, "0")).join("");
+}
+\nexport default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === "/") return new Response("ELIAS BINGO SERVER ONLINE");
@@ -282,6 +298,66 @@ export class BingoRoom {
       const item = this.roomState.withdrawals && this.roomState.withdrawals[String(data.withdrawalId||"")];
       if (!item || item.status !== "approved") { sender.send(JSON.stringify({type:"ERROR",message:"Only approved withdrawals can be marked paid"})); return; }
       item.status = "paid"; item.paidAt = Date.now(); await this.saveState(); this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
+    }
+
+    if (data.type === "PLAYER_REGISTER") {
+      const phone = normalizePhone(data.phone), password = String(data.password || ""), name = String(data.name || "").trim().slice(0,60);
+      const playerId = String(data.playerId || "").slice(0,100), playerToken = String(data.playerToken || "");
+      if (!phone || password.length < 8 || password.length > 128 || !name || !playerId || playerToken.length < 32) {
+        sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid phone number, player name, and password (at least 8 characters)."})); return;
+      }
+      const accountKey = "playerAccount:" + phone;
+      if (await this.ctx.storage.get(accountKey)) { sender.send(JSON.stringify({type:"ERROR",message:"This phone number is already registered in this game. Please log in."})); return; }
+      const tokenKey = "playerToken:" + playerId, savedToken = await this.ctx.storage.get(tokenKey);
+      if ((savedToken && savedToken !== playerToken) || (!savedToken && this.roomState.players[playerId])) {
+        sender.send(JSON.stringify({type:"ERROR",message:"This existing player profile cannot be linked from this device. Contact the Admin."})); return;
+      }
+      const salt = randomHex(16), passwordHash = await hashPassword(password, salt);
+      if (!savedToken) await this.ctx.storage.put(tokenKey, playerToken);
+      const previous = this.roomState.players[playerId] || {};
+      this.roomState.players[playerId] = {...previous,name,phone,walletBalance:Number(previous.walletBalance)||0,approvedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],pendingCards:Array.isArray(previous.pendingCards)?previous.pendingCards:[],selectedCards:Array.isArray(previous.approvedCards)?previous.approvedCards:[],selectedCard:(previous.approvedCards||[])[0]||null,status:"joined",joinedAt:previous.joinedAt||Date.now()};
+      await this.ctx.storage.put(accountKey,{phone,playerId,salt,passwordHash,iterations:PASSWORD_ITERATIONS,mustChangePassword:false,createdAt:Date.now()});
+      await this.saveState();
+      try { sender.serializeAttachment({role:"player",playerId,phone}); } catch {}
+      sender.send(JSON.stringify({type:"PLAYER_AUTH_OK",playerId,phone,mustChangePassword:false,approvedCards:this.roomState.players[playerId].approvedCards}));
+      this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
+    }
+    if (data.type === "PLAYER_LOGIN") {
+      const phone = normalizePhone(data.phone), password = String(data.password || "");
+      if (!phone || !password) { sender.send(JSON.stringify({type:"ERROR",message:"Enter your phone number and password."})); return; }
+      const key = "playerAccount:" + phone, account = await this.ctx.storage.get(key);
+      if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
+      const attemptHash = await hashPassword(password, account.salt);
+      if (attemptHash !== account.passwordHash) { sender.send(JSON.stringify({type:"ERROR",message:"Phone number or password is incorrect."})); return; }
+      const player = this.roomState.players[account.playerId];
+      if (!player) { sender.send(JSON.stringify({type:"ERROR",message:"Player account data was not found. Contact the Admin."})); return; }
+      try { sender.serializeAttachment({role:"player",playerId:account.playerId,phone}); } catch {}
+      player.status = "joined"; player.lastLoginAt = Date.now(); await this.saveState();
+      sender.send(JSON.stringify({type:"PLAYER_AUTH_OK",playerId:account.playerId,phone,mustChangePassword:!!account.mustChangePassword,approvedCards:player.approvedCards||[]}));
+      this.broadcast({type:"ROOM_STATE",data:this.roomState}); return;
+    }
+    if (data.type === "PLAYER_CHANGE_PASSWORD") {
+      let identity = null; try { identity = sender.deserializeAttachment(); } catch {}
+      if (identity?.role !== "player" || !identity.phone) { sender.send(JSON.stringify({type:"ERROR",message:"Log in before changing your password."})); return; }
+      const password = String(data.newPassword || "");
+      if (password.length < 8 || password.length > 128) { sender.send(JSON.stringify({type:"ERROR",message:"New password must be at least 8 characters."})); return; }
+      const key = "playerAccount:" + identity.phone, account = await this.ctx.storage.get(key);
+      if (!account || account.playerId !== identity.playerId) { sender.send(JSON.stringify({type:"ERROR",message:"Player account not found."})); return; }
+      const salt = randomHex(16), passwordHash = await hashPassword(password, salt);
+      account.salt = salt; account.passwordHash = passwordHash; account.iterations = PASSWORD_ITERATIONS; account.mustChangePassword = false; account.passwordChangedAt = Date.now();
+      await this.ctx.storage.put(key,account);
+      sender.send(JSON.stringify({type:"PLAYER_PASSWORD_CHANGED"})); return;
+    }
+    if (data.type === "ADMIN_RESET_PLAYER_PASSWORD") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required."})); return; }
+      const phone = normalizePhone(data.phone), temporaryPassword = String(data.temporaryPassword || "");
+      if (!phone || temporaryPassword.length < 8 || temporaryPassword.length > 128) { sender.send(JSON.stringify({type:"ERROR",message:"Enter a valid player phone number and temporary password (at least 8 characters)."})); return; }
+      const key = "playerAccount:" + phone, account = await this.ctx.storage.get(key);
+      if (!account) { sender.send(JSON.stringify({type:"ERROR",message:"No registered player found with that phone number in this game."})); return; }
+      const salt = randomHex(16); account.salt = salt; account.passwordHash = await hashPassword(temporaryPassword,salt); account.iterations = PASSWORD_ITERATIONS; account.mustChangePassword = true; account.passwordResetAt = Date.now();
+      await this.ctx.storage.put(key,account);
+      sender.send(JSON.stringify({type:"PLAYER_PASSWORD_RESET",phone})); return;
     }
     if (data.type === "JOIN_PLAYER") {
       let currentIdentity = null; try { currentIdentity = sender.deserializeAttachment(); } catch {}
