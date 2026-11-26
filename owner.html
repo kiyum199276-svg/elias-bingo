@@ -19,7 +19,21 @@ small{color:#cbd5e1}.muted{font-size:13px;color:#9fb0c5}
 </section>
 <section id="dashboard">
 <h2>All registered games</h2><p class="muted">Game IDs are added automatically when an Admin or player connects to a game.</p><section id="overview" class="game" style="display:block"><strong>Financial overview</strong><div id="financialOverview" class="muted">Loading totals…</div></section><section class="game" style="display:block"><strong>Search players across all games</strong><input id="playerSearch" placeholder="Enter player name or Player ID" autocomplete="off"><button id="exportPlayers" class="view" type="button">Download all players (CSV)</button><div id="playerSearchResults" class="muted">Enter a name or Player ID to search.</div></section>
-<input id="gameSearch" placeholder="Filter games by Game ID" autocomplete="off"><button id="refresh">Refresh game list</button><ul id="games"></ul><section id="details"><h2 id="detailTitle">Game details</h2><div id="summary"></div><h3>Players</h3><div id="playerTable"></div><h3>Deposit requests</h3><div id="depositTable"></div><h3>Withdrawals</h3><div id="withdrawalTable"></div><button id="exportTransactions" class="view" type="button">Download deposits & withdrawals (CSV)</button></section>
+<input id="gameSearch" placeholder="Filter games by Game ID" autocomplete="off"><button id="refresh">Refresh game list</button><ul id="games"></ul>
+<section class="game" style="display:block">
+ <strong>Admin account management</strong>
+ <p class="muted">Create one Admin login for a Game ID. Admins can sign in with their phone number and password.</p>
+ <input id="newAdminGame" placeholder="Game ID (e.g. ELIAS-ABC123)" autocomplete="off">
+ <button id="generateAdminGame" class="view" type="button">Generate Game ID</button>
+ <input id="newAdminPhone" placeholder="Admin phone number" inputmode="tel" autocomplete="off">
+ <input id="newAdminPassword" type="password" placeholder="Initial password (8+ characters)" autocomplete="new-password">
+ <button id="createAdmin" type="button">Create Admin account</button>
+ <div id="adminMessage" class="muted">No Admin account changes yet.</div>
+ <h3>Existing Admin accounts</h3>
+ <button id="refreshAdmins" class="view" type="button">Refresh Admin list</button>
+ <div id="adminList" class="muted">Loading Admin accounts…</div>
+</section>
+<section id="details"><h2 id="detailTitle">Game details</h2><div id="summary"></div><h3>Players</h3><div id="playerTable"></div><h3>Deposit requests</h3><div id="depositTable"></div><h3>Withdrawals</h3><div id="withdrawalTable"></div><button id="exportTransactions" class="view" type="button">Download deposits & withdrawals (CSV)</button></section>
 <button id="logout" style="background:#d9e2ef">Log out</button>
 </section>
 <div id="message" role="status"></div>
@@ -36,6 +50,33 @@ async function request(path,options={}) {
  const data=await response.json().catch(()=>({error:"Server returned an invalid response."}));
  if(!response.ok)throw new Error(data.error||"Request failed ("+response.status+")");
  return data;
+}
+
+async function loadAdmins(){
+ const host=$("adminList");host.textContent="Loading Admin accounts…";
+ try{
+  const data=await request("/owner/admins");
+  host.innerHTML="";
+  if(!data.admins||!data.admins.length){host.textContent="No Admin accounts created yet.";return}
+  for(const admin of data.admins){
+   const row=document.createElement("div");row.className="game";row.style.display="block";
+   const title=document.createElement("strong");title.textContent=admin.phone+" • "+admin.gameId;
+   const state=document.createElement("div");state.className="muted";state.textContent=(admin.active?"Active":"Disabled")+" • Created: "+(admin.createdAt?new Date(admin.createdAt).toLocaleString():"—");
+   const actions=document.createElement("div");actions.style.cssText="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
+   const toggle=document.createElement("button");toggle.className="view";toggle.textContent=admin.active?"Disable Admin":"Enable Admin";
+   toggle.addEventListener("click",async()=>{await updateAdmin(admin,admin.active?"disable":"enable","");});
+   const password=document.createElement("input");password.type="password";password.placeholder="New password (8+ chars)";password.autocomplete="new-password";password.style.maxWidth="240px";
+   const reset=document.createElement("button");reset.className="view";reset.textContent="Reset password";
+   reset.addEventListener("click",async()=>{if(password.value.length<8){$("adminMessage").textContent="Enter a new password with at least 8 characters.";return;}await updateAdmin(admin,"reset-password",password.value);password.value="";});
+   actions.append(toggle,password,reset);row.append(title,state,actions);host.appendChild(row);
+  }
+ }catch(error){host.textContent=error.message}
+}
+async function updateAdmin(admin,action,password){
+ try{
+  const data=await request("/owner/admins/update",{method:"POST",body:JSON.stringify({phone:admin.phone,gameId:admin.gameId,action,password})});
+  $("adminMessage").textContent=data.message||"Admin account updated.";await loadAdmins();
+ }catch(error){$("adminMessage").textContent=error.message}
 }
 async function loadGames(){
  try{
@@ -74,7 +115,7 @@ $("loginButton").addEventListener("click",async()=>{
  showError("");$("loginButton").disabled=true;
  try{
   const data=await request("/owner/login",{method:"POST",body:JSON.stringify({phone:$("phone").value,password:$("password").value})});
-  token=data.token;$("login").style.display="none";$("dashboard").style.display="block";$("password").value="";await loadGames();
+  token=data.token;$("login").style.display="none";$("dashboard").style.display="block";$("password").value="";await loadGames();await loadAdmins();
  }catch(error){showError(error.message)}
  finally{$("loginButton").disabled=false}
 });
@@ -141,6 +182,23 @@ $("exportTransactions").addEventListener("click",()=>{
  link.href=url;link.download="elias-bingo-transactions.csv";document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
  showError("Transaction CSV export prepared.");
 });
+
+$("generateAdminGame").addEventListener("click",()=>{
+ const id="ELIAS-"+Math.random().toString(36).slice(2,8).toUpperCase();
+ $("newAdminGame").value=id;
+});
+$("createAdmin").addEventListener("click",async()=>{
+ const gameId=$("newAdminGame").value.trim(),phone=$("newAdminPhone").value.trim(),password=$("newAdminPassword").value;
+ if(!gameId||!phone||password.length<8){$("adminMessage").textContent="Enter a Game ID, phone number, and password of at least 8 characters.";return;}
+ $("createAdmin").disabled=true;
+ try{
+  const data=await request("/owner/admins",{method:"POST",body:JSON.stringify({gameId,phone,password})});
+  $("adminMessage").textContent=data.message||"Admin account created.";
+  $("newAdminPassword").value="";$("newAdminPhone").value="";await loadAdmins();
+ }catch(error){$("adminMessage").textContent=error.message}
+ finally{$("createAdmin").disabled=false}
+});
+$("refreshAdmins").addEventListener("click",loadAdmins);
 $("refresh").addEventListener("click",loadGames);
 $("logout").addEventListener("click",()=>{token="";$("dashboard").style.display="none";$("login").style.display="block";showError("You are logged out.")});
 </script></body></html>
