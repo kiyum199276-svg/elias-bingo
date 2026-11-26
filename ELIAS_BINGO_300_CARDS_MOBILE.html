@@ -31,7 +31,21 @@ button.secondary{background:#e8eef5;color:var(--ink)}
 .actions button{flex:1}
 .note{font-size:12px;line-height:1.55;color:#65758a;margin:13px 3px 0}
 footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
-@media(max-width:360px){main{padding:10px 8px 22px}.board{gap:3px;padding:5px}.cell{border-radius:6px}button{padding:11px 10px}}
+#cardBoards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.player-card{min-width:0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px;box-shadow:0 2px 8px #10243a0d}
+.player-card .cardhead{margin:2px 1px 7px;gap:4px}
+.player-card .cardhead h2{font-size:16px}
+.player-card .board{gap:2px;padding:4px;border-radius:9px}
+.player-card .cell{font-size:clamp(10px,3.1vw,17px);border-radius:4px}
+.player-card .letter{min-height:22px;font-size:13px}
+.player-card .actions{gap:4px;margin-top:6px;flex-direction:column}
+.player-card .actions button{width:100%;padding:8px 4px;font-size:11px}
+.player-card .claim-status{font-size:10px}
+.current-call{text-align:center;margin-top:12px;padding:12px;background:#fff;border:1px solid var(--line);border-radius:16px}
+.current-call-label{font-size:13px;color:#526579;font-weight:700}
+.current-call-circle{width:94px;height:94px;margin:8px auto 2px;border-radius:50%;background:#080808;color:#fff;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;box-shadow:0 4px 12px #0003}
+.current-call-letter{font-size:14px;color:#526579;font-weight:700}
+@media(max-width:360px){main{padding:10px 8px 22px}.board{gap:3px;padding:5px}.cell{border-radius:6px}.player-card{padding:5px}.player-card .cell{font-size:10px}.player-card .letter{font-size:11px;min-height:19px}button{padding:11px 10px}.current-call-circle{width:82px;height:82px;font-size:36px}}
 </style>
 <meta name="theme-color" content="#10243a">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -78,9 +92,10 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
   <div id="withdrawalStatus" class="help">Winnings become available only after the Admin confirms your Bingo win.</div>
   <div id="withdrawalHistory" class="help"></div>
 </section>
-<section class="panel" style="margin-top:12px">
-  <strong>Numbers called by Admin / በAdmin የተጠሩ ቁጥሮች</strong>
-  <div id="calledNumbers" style="margin-top:8px;color:#526579;font-size:14px">No numbers called yet / ገና ቁጥር አልተጠራም</div>
+<section class="current-call" aria-live="polite">
+  <div class="current-call-label">CURRENT NUMBER / አሁን የተጠራው ቁጥር</div>
+  <div id="currentCallNumber" class="current-call-circle">—</div>
+  <div id="currentCallLetter" class="current-call-letter">Waiting for Admin to call</div>
 </section>
 <div id="winningPattern" class="pattern-banner" hidden></div><div id="gamePrizeInfo" class="panel" style="margin:10px 0;padding:12px;border:2px solid #d6a72b;background:#fff8df;color:#352b13;font-weight:700" hidden>Card price: — • Total winning prize pool: —</div><div class="actions" style="margin:8px 0"><button id="clearAllMarks" class="secondary" type="button">Clear marks on all my cards</button></div><div id="cardBoards"></div>
 <div class="actions"><button id="fullBtn" type="button">Full Screen</button></div>
@@ -112,20 +127,22 @@ function render() {
   const cardsToShow=approvedCards;
   boardsContainer.innerHTML="";
   if(!cardsToShow.length){
-    const info=document.createElement("div");info.className="panel";
-    info.textContent="Choose cards above, then confirm purchase. Purchased cards appear here immediately.";
+    const info=document.createElement("div");info.className="panel";info.style.gridColumn="1 / -1";
+    info.textContent="Your assigned or purchased cards will appear here.";
     boardsContainer.appendChild(info);
     return;
   }
   cardsToShow.forEach(cardNo=>{
     const values=DECK[String(cardNo)];
     if(!values)return;
+    const cardWrap=document.createElement("article");cardWrap.className="player-card";
     const marks=new Set(saved[String(cardNo)]||[]);
     const patternCells=PATTERN_CELLS[winningPattern]||[];
     const head=document.createElement("div");head.className="cardhead";
     const heading=document.createElement("h2");heading.textContent="ካርድ "+cardNo;
-    const count=document.createElement("span");count.style.cssText="font-size:12px;color:#526579";count.textContent="Marked: "+values.filter((value,index)=>value!=="FREE"&&(marks.has(index)||calledNumbers.includes(Number(value)))).length;
-    head.append(heading,count);boardsContainer.appendChild(head);
+    const count=document.createElement("span");count.style.cssText="font-size:11px;color:#526579";
+    count.textContent="Marked: "+values.filter((value,index)=>value!=="FREE"&&(marks.has(index)||calledNumbers.includes(Number(value)))).length;
+    head.append(heading,count);cardWrap.appendChild(head);
     const cardBoard=document.createElement("section");cardBoard.className="board";cardBoard.setAttribute("aria-label","Bingo card "+cardNo);
     ["B","I","N","G","O"].forEach(letter=>{const el=document.createElement("div");el.className="cell letter";el.textContent=letter;cardBoard.appendChild(el);});
     values.forEach((value,index)=>{
@@ -136,15 +153,17 @@ function render() {
       }
       cardBoard.appendChild(el);
     });
-    boardsContainer.appendChild(cardBoard);
+    cardWrap.appendChild(cardBoard);
     const actions=document.createElement("div");actions.className="actions";
-    const clear=document.createElement("button");clear.className="secondary";clear.type="button";clear.textContent="Clear card "+cardNo+" marks";
+    const clear=document.createElement("button");clear.className="secondary";clear.type="button";clear.textContent="Clear marks";
     clear.addEventListener("click",()=>{if(!confirm("Clear marks on card "+cardNo+"?"))return;saved[String(cardNo)]=[];save();render();});
     actions.appendChild(clear);
-    const bingo=document.createElement("button");bingo.type="button";bingo.className="bingo-claim";bingo.textContent="BINGO! • Card "+cardNo;bingo.disabled=!roomSocket||roomSocket.readyState!==WebSocket.OPEN;
-    const claim=document.createElement("div");claim.className="claim-status";claim.textContent="Press BINGO when you believe this card has won.";
+    const bingo=document.createElement("button");bingo.type="button";bingo.className="bingo-claim";bingo.textContent="BINGO!";
+    bingo.disabled=!roomSocket||roomSocket.readyState!==WebSocket.OPEN;
+    const claim=document.createElement("div");claim.className="claim-status";claim.textContent="Press BINGO if this card wins.";
     bingo.addEventListener("click",()=>{if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}roomSocket.send(JSON.stringify({type:"BINGO_CLAIM",playerId,playerName:nameInput.value.trim(),cardNumber:cardNo,cardValues:values}));claim.textContent="Bingo claim sent to Admin.";});
-    actions.appendChild(bingo);actions.appendChild(claim);boardsContainer.appendChild(actions);
+    actions.appendChild(bingo);actions.appendChild(claim);cardWrap.appendChild(actions);
+    boardsContainer.appendChild(cardWrap);
   });
 }
 document.getElementById("showBtn").addEventListener("click",render);
@@ -203,7 +222,12 @@ function renderWalletPanel(){
 }
 function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
-  calledNumbersEl.textContent=calledNumbers.length?calledNumbers.map(numberLabel).join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
+  const number=calledNumbers.length?Number(calledNumbers[calledNumbers.length-1]):null;
+  const numberEl=document.getElementById("currentCallNumber");
+  const letterEl=document.getElementById("currentCallLetter");
+  if(!numberEl||!letterEl)return;
+  numberEl.textContent=Number.isInteger(number)&&number>=1&&number<=75?String(number):"—";
+  letterEl.textContent=Number.isInteger(number)&&number>=1&&number<=75?numberLabel(number):"Waiting for Admin to call";
 }
 function connectToGame(){
   const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value;
