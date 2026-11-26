@@ -125,7 +125,20 @@ export class BingoRoom {
       }));
       const deposits=Object.values(this.roomState.deposits||{}).map(d=>({playerName:String(d.playerName||""),amount:Number(d.amount)||0,status:String(d.status||""),createdAt:Number(d.createdAt)||0,method:String(d.method||"")}));
       const withdrawals=Object.values(this.roomState.withdrawals||{}).map(w=>({playerName:String(w.playerName||""),amount:Number(w.amount)||0,status:String(w.status||""),createdAt:Number(w.createdAt)||0,method:String(w.method||"")}));
-      return new Response(JSON.stringify({gameId:this.roomState.gameId,gameRound:Number(this.roomState.gameRound)||0,cardPrice:Number(this.roomState.cardPrice)||0,players,deposits,withdrawals,updatedAt:Number(this.roomState.updatedAt)||0}),{headers:{"Content-Type":"application/json"}});
+      const sumByCurrency=(items,acceptedStatuses)=>{
+        const totals={};
+        for(const item of items){
+          const currency=String(item.currency||"ETB").slice(0,8);
+          if(!totals[currency]) totals[currency]={count:0,amount:0,pendingCount:0,pendingAmount:0};
+          const amount=Number(item.amount)||0;
+          if(item.status==="pending"){totals[currency].pendingCount++;totals[currency].pendingAmount+=amount;}
+          if(acceptedStatuses.includes(item.status)){totals[currency].count++;totals[currency].amount+=amount;}
+        }
+        return totals;
+      };
+      const walletTotal=players.reduce((sum,p)=>sum+(Number(p.walletBalance)||0),0);
+      const financials={walletBalanceETB:walletTotal,depositTotals:sumByCurrency(deposits,["approved"]),withdrawalTotals:sumByCurrency(withdrawals,["approved","paid"]),pendingWithdrawals:withdrawals.filter(w=>w.status==="pending").length};
+      return new Response(JSON.stringify({gameId:this.roomState.gameId,gameRound:Number(this.roomState.gameRound)||0,cardPrice:Number(this.roomState.cardPrice)||0,players,deposits,withdrawals,financials,updatedAt:Number(this.roomState.updatedAt)||0}),{headers:{"Content-Type":"application/json"}});
     }
     const gameId = decodeURIComponent(requestUrl.pathname.slice("/room/".length));
     if (!this.roomState.gameId) { this.roomState.gameId = gameId; await this.saveState(); }
