@@ -192,7 +192,7 @@ function renderDepositPanel(){
  input.disabled=false;button.disabled=false;
 }
 function renderWalletPanel(){
- const panel=document.getElementById("walletPanel");if(!panel)return;panel.hidden=false;
+ const panel=document.getElementById("walletPanel");if(!panel)return;if(!depositConfig.enabled){panel.hidden=true;return;}panel.hidden=false;
  const balance=Number(myPlayerRecord&&myPlayerRecord.walletBalance)||0;
  document.getElementById("walletBalance").textContent="Available balance: "+balance.toFixed(2)+" ETB";
  const history=document.getElementById("withdrawalHistory");history.innerHTML="<strong>Withdrawal history</strong>";
