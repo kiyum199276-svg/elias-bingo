@@ -40,9 +40,12 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 <section class="panel">
   <div style="display:grid;gap:8px;margin-bottom:12px">
     <input id="gameIdInput" placeholder="Game ID / የጨዋታ መለያ" autocomplete="off" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
-    <input id="playerNameInput" placeholder="Player name / የተጫዋች ስም" autocomplete="name" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
-    <button id="connectBtn" type="button">Connect to game / ከጨዋታው ጋር ተገናኝ</button>
-    <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Not connected / አልተገናኘም</div>
+    <input id="playerPhoneInput" inputmode="tel" autocomplete="tel" placeholder="Phone number" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <input id="playerPasswordInput" type="password" autocomplete="current-password" placeholder="Password (at least 8 characters)" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <input id="playerNameInput" placeholder="Player name (for new accounts)" autocomplete="name" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
+    <div style="display:flex;gap:8px"><button id="registerPlayerBtn" type="button" style="flex:1">Create account</button><button id="loginPlayerBtn" type="button" style="flex:1">Log in</button></div>
+    <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Enter your Game ID, phone number and password.</div>
+    <div id="passwordChangePanel" hidden style="display:grid;gap:8px"><strong>Password reset required</strong><input id="newPlayerPasswordInput" type="password" autocomplete="new-password" placeholder="Choose a new password (8+ characters)" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px"><button id="changePlayerPasswordBtn" type="button">Save new password</button></div>
   </div>
   <div class="controls">
     <select id="cardSelect" aria-label="የካርድ ቁጥር"></select>
@@ -148,7 +151,7 @@ document.getElementById("fullBtn").addEventListener("click",async()=>{
 const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const gameInput=document.getElementById("gameIdInput");
 const nameInput=document.getElementById("playerNameInput");
-const connectBtn=document.getElementById("connectBtn");
+const registerBtn=document.getElementById("registerPlayerBtn");\nconst loginBtn=document.getElementById("loginPlayerBtn");\nconst phoneInput=document.getElementById("playerPhoneInput");\nconst passwordInput=document.getElementById("playerPasswordInput");
 const connectionStatus=document.getElementById("connectionStatus");
 const calledNumbersEl=document.getElementById("calledNumbers");
 let roomSocket=null;
@@ -193,63 +196,75 @@ function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
   calledNumbersEl.textContent=calledNumbers.length?calledNumbers.map(numberLabel).join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
 }
-function connectToGame(){
-  const gameId=gameInput.value.trim();
-  const playerName=nameInput.value.trim();
-  if(!gameId||!playerName){alert("Enter Game ID and player name / የጨዋታ መለያና ስም ያስገቡ");return}
-  
+function connectToGame(mode){
+  const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value, playerName=nameInput.value.trim();
+  if(!gameId||!phone||!password||(mode==="register"&&!playerName)){connectionStatus.textContent="Enter Game ID, phone number, password"+(mode==="register", and player name.");return;}
+  if(password.length<8){connectionStatus.textContent="Password must be at least 8 characters.";return;}
   if(roomSocket){try{roomSocket.close()}catch(e){}}
-  connectionStatus.textContent="Connecting... / በመገናኘት ላይ";
-  try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}
-  catch(e){connectionStatus.textContent="Connection failed / ግንኙነት አልተሳካም";return}
+  connectionStatus.textContent="Connecting to game…";
+  try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}catch(e){connectionStatus.textContent="Connection failed.";return;}
   roomSocket.addEventListener("open",()=>{
     localStorage.setItem("eliasBingoGameIdV1",gameId);
     localStorage.setItem("eliasBingoPlayerNameV1",playerName);
-    connectionStatus.textContent="Connected / ተገናኝቷል";
-    roomSocket.send(JSON.stringify({type:"JOIN_PLAYER",playerId,playerToken,name:playerName}));
+    connectionStatus.textContent=mode==="register"?"Creating player account…":"Logging in…";
+    const payload={type:mode==="register"?"PLAYER_REGISTER":"PLAYER_LOGIN",phone,password};
+    if(mode==="register"){payload.name=playerName;payload.playerId=playerId;payload.playerToken=playerToken;}
+    roomSocket.send(JSON.stringify(payload));
   });
   roomSocket.addEventListener("message",event=>{
     let message;try{message=JSON.parse(event.data)}catch(e){return}
+    if(message.type==="PLAYER_AUTH_OK"){
+      playerId=message.playerId;localStorage.setItem(PLAYER_ID_KEY,playerId);
+      phoneInput.value=message.phone||phone;
+      document.getElementById("passwordChangePanel").hidden=!message.mustChangePassword;
+      passwordInput.value="";
+      connectionStatus.textContent=message.mustChangePassword?"Password reset by Admin. Create a new password to continue.":"Player account connected.";
+      if(message.mustChangePassword){document.getElementById("passwordChangePanel").scrollIntoView({behavior:"smooth",block:"center"});}
+    }
+    if(message.type==="PLAYER_PASSWORD_CHANGED"){
+      document.getElementById("passwordChangePanel").hidden=true;
+      document.getElementById("newPlayerPasswordInput").value="";
+      connectionStatus.textContent="Password changed. Your account is ready.";
+    }
     if(message.type==="ROOM_STATE"&&message.data){
       calledNumbers=Array.isArray(message.data.calledNumbers)?message.data.calledNumbers:[];
-      const roundGameId=gameInput.value.trim();
-      const roundKey="eliasBingoRoundV1:"+roundGameId;
-      const incomingRound=Number(message.data.gameRound)||0;
-      const previousRound=localStorage.getItem(roundKey);
-      if(previousRound!==null && Number(previousRound)!==incomingRound){saved={};save();}
+      const roundGameId=gameInput.value.trim(),roundKey="eliasBingoRoundV1:"+roundGameId,incomingRound=Number(message.data.gameRound)||0,previousRound=localStorage.getItem(roundKey);
+      if(previousRound!==null&&Number(previousRound)!==incomingRound){saved={};save();}
       localStorage.setItem(roundKey,String(incomingRound));
       winningPattern=typeof message.data.pattern==="string"?message.data.pattern:"";
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
-      depositConfig=message.data.depositConfig||{enabled:false};
-      cardPrice=Number(message.data.cardPrice)||0;
+      depositConfig=message.data.depositConfig||{enabled:false};cardPrice=Number(message.data.cardPrice)||0;
       document.getElementById("cardPurchaseInfo").textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—");
       const allDeposits=message.data.deposits||{};
       myDeposit=Object.values(allDeposits).filter(d=>d&&d.playerId===playerId).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0]||null;
       renderDepositPanel();
       const me=message.data.players&&message.data.players[playerId];
       myPlayerRecord=me||{};
+      if(me&&me.name){nameInput.value=me.name;}
       myWithdrawals=Object.values(message.data.withdrawals||{}).filter(x=>x&&x.playerId===playerId);
       renderWalletPanel();
       approvedCards=me&&Array.isArray(me.approvedCards)?me.approvedCards:[];
       pendingCards=me&&Array.isArray(me.pendingCards)?me.pendingCards:[];
-      showCalledNumbers();
-      render();
-      if(message.data.players&&message.data.players[playerId])connectionStatus.textContent="Connected as "+playerName+" / ተገናኝቷል";
+      showCalledNumbers();render();
+      if(me)connectionStatus.textContent="Logged in as "+(me.name||phone);
     }
     if(message.type==="CARD_PURCHASE_SUCCESS"){document.getElementById("purchaseStatus").textContent="Purchase successful: cards "+message.cards.join(", ")+" • Paid "+Number(message.total).toFixed(2)+" ETB. Balance: "+Number(message.balance).toFixed(2)+" ETB.";selectedCards=[];updateSelectedCards();render();}
-    if(message.type==="CARD_REQUEST_RESULT"){
-      pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];
-      approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];
-      const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];
-      connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";
-      render();
-    }
+    if(message.type==="CARD_REQUEST_RESULT"){pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";render();}
     if(message.type==="ERROR"){document.getElementById("purchaseStatus").textContent=message.message||"Error";connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
   });
-  roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected / ተቋርጧል"});
-  roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error / የግንኙነት ስህተት"});
+  roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected."});
+  roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error."});
 }
+registerBtn.addEventListener("click",()=>connectToGame("register"));
+loginBtn.addEventListener("click",()=>connectToGame("login"));
+document.getElementById("changePlayerPasswordBtn").addEventListener("click",()=>{
+ if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){connectionStatus.textContent="Log in first.";return;}
+ const next=document.getElementById("newPlayerPasswordInput").value;
+ if(next.length<8){connectionStatus.textContent="New password must be at least 8 characters.";return;}
+ roomSocket.send(JSON.stringify({type:"PLAYER_CHANGE_PASSWORD",newPassword:next}));
+ connectionStatus.textContent="Updating password…";
+});
 document.getElementById("requestWithdrawal").addEventListener("click",()=>{
  if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}
  const amount=Number(document.getElementById("withdrawAmount").value),account=document.getElementById("withdrawAccount").value.trim(),method=document.getElementById("withdrawMethod").value;
