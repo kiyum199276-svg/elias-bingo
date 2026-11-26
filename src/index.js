@@ -101,6 +101,15 @@ export default {
       }
       const auth=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
       if (!env.OWNER_SESSION_SECRET || !await verifyOwnerToken(auth,env.OWNER_SESSION_SECRET)) return ownerJson({error:"Owner login required."},401);
+      if (url.pathname === "/owner/player-password-reset" && request.method === "POST") {
+        let body={};try{body=await request.json()}catch{}
+        const gameId=String(body.gameId||"").trim(),phone=normalizePhone(body.phone),temporaryPassword=String(body.temporaryPassword||"");
+        if(!/^[A-Za-z0-9_-]{3,80}$/.test(gameId)||!phone||temporaryPassword.length<8||temporaryPassword.length>128)return ownerJson({error:"Enter a valid Game ID, player phone number, and temporary password (8 to 128 characters)."},400);
+        const id=env.BINGO_ROOMS.idFromName(gameId);
+        const response=await env.BINGO_ROOMS.get(id).fetch("https://room/owner-reset-player-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,temporaryPassword})});
+        const data=await response.json().catch(()=>({error:"Could not reset the player password."}));
+        return ownerJson(data,response.status);
+      }
       if (url.pathname === "/owner/admins" && request.method === "GET") {
         const registryId=env.OWNER_REGISTRY.idFromName("global");
         const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-list");
@@ -180,6 +189,17 @@ export class BingoRoom {
   async fetch(request) {
     await this.ready;
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === "/owner-reset-player-password" && request.method === "POST") {
+      let body={};try{body=await request.json()}catch{}
+      const phone=normalizePhone(body.phone),temporaryPassword=String(body.temporaryPassword||"");
+      if(!phone||temporaryPassword.length<8||temporaryPassword.length>128)return new Response(JSON.stringify({error:"Invalid phone number or temporary password."}),{status:400,headers:{"Content-Type":"application/json"}});
+      const key="playerAccount:"+phone,legacyKey="playerAccount:251"+phone.slice(1);
+      const account=await this.ctx.storage.get(key)||await this.ctx.storage.get(legacyKey);
+      if(!account)return new Response(JSON.stringify({error:"No registered player found with that phone number in this game."}),{status:404,headers:{"Content-Type":"application/json"}});
+      const salt=randomHex(16);account.salt=salt;account.passwordHash=await hashPassword(temporaryPassword,salt);account.iterations=PASSWORD_ITERATIONS;account.mustChangePassword=true;account.passwordResetAt=Date.now();
+      await this.ctx.storage.put(key,account);
+      return new Response(JSON.stringify({ok:true,message:"Player password reset. The player must change the temporary password after logging in."}),{headers:{"Content-Type":"application/json"}});
+    }
     if (requestUrl.pathname === "/owner-snapshot" && request.method === "GET") {
       const players=Object.entries(this.roomState.players||{}).map(([playerId,p])=>({
         playerId,name:String(p.name||"Player"),walletBalance:Number(p.walletBalance)||0,
