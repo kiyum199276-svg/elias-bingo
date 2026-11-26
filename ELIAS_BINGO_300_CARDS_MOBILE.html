@@ -198,7 +198,7 @@ function showCalledNumbers(){
 }
 function connectToGame(mode){
   const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value, playerName=nameInput.value.trim();
-  if(!gameId||!phone||!password||(mode==="register"&&!playerName)){connectionStatus.textContent="Enter Game ID, phone number, password"+(mode==="register", and player name.");return;}
+  if(!gameId||!phone||!password||(mode==="register"&&!playerName)){connectionStatus.textContent="Enter Game ID, phone number, password"+(mode==="register" ? " and player name." : ".");return;}
   if(password.length<8){connectionStatus.textContent="Password must be at least 8 characters.";return;}
   if(roomSocket){try{roomSocket.close()}catch(e){}}
   connectionStatus.textContent="Connecting to game…";
