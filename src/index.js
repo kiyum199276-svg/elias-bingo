@@ -360,6 +360,9 @@ export class BingoRoom {
       sender.send(JSON.stringify({type:"PLAYER_PASSWORD_RESET",phone})); return;
     }
     if (data.type === "JOIN_PLAYER") {
+      sender.send(JSON.stringify({type:"ERROR",message:"Please register or log in with your phone number and password."})); return;
+      /* legacy device-token join disabled; account login is required. */
+
       let currentIdentity = null; try { currentIdentity = sender.deserializeAttachment(); } catch {}
       if (currentIdentity?.role === "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin connections cannot join as players"})); return; }
       const playerId = String(data.playerId || "").slice(0, 100);
