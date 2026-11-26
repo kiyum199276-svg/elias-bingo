@@ -11,6 +11,9 @@
     a{display:block;padding:16px;margin:12px 0;border-radius:10px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}
     a:last-child{background:#0f766e}
   </style>
+<meta name="theme-color" content="#10243a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/elias-bingo.svg" type="image/svg+xml">
 </head>
 <body>
   <main>
@@ -20,5 +23,34 @@
     <a href="ELIAS_BINGO_300_CARDS_MOBILE.html">PLAYER LOGIN / GAME</a>
     <a href="admin-live.html">ADMIN PAGE</a>
   </main>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/service-worker.js").catch(() => {}));
+}
+let eliasInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  eliasInstallPrompt = event;
+  if (!document.getElementById("eliasInstallButton")) {
+    const button = document.createElement("button");
+    button.id = "eliasInstallButton";
+    button.type = "button";
+    button.textContent = "Install ELIAS BINGO";
+    button.style.cssText = "position:fixed;right:14px;bottom:14px;z-index:99999;padding:12px 16px;border:0;border-radius:999px;background:#f4c542;color:#17243a;font-weight:700;box-shadow:0 3px 14px #0005";
+    button.addEventListener("click", async () => {
+      if (!eliasInstallPrompt) return;
+      eliasInstallPrompt.prompt();
+      await eliasInstallPrompt.userChoice;
+      eliasInstallPrompt = null;
+      button.remove();
+    });
+    document.body.appendChild(button);
+  }
+});
+window.addEventListener("appinstalled", () => {
+  eliasInstallPrompt = null;
+  document.getElementById("eliasInstallButton")?.remove();
+});
+</script>
 </body>
 </html>
