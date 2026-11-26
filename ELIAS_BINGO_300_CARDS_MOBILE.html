@@ -42,9 +42,10 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
     <input id="gameIdInput" placeholder="Game ID / የጨዋታ መለያ" autocomplete="off" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
     <input id="playerPhoneInput" inputmode="tel" autocomplete="tel" placeholder="Phone number" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
     <input id="playerPasswordInput" type="password" autocomplete="current-password" placeholder="Password (at least 8 characters)" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
-    <input id="playerNameInput" placeholder="Player name (for new accounts)" autocomplete="name" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px">
-    <div style="display:flex;gap:8px"><button id="registerPlayerBtn" type="button" style="flex:1">Create account</button><button id="loginPlayerBtn" type="button" style="flex:1">Log in</button></div>
-    <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Enter your Game ID, phone number and password.</div>
+    <input id="playerNameInput" type="hidden">
+    <button id="loginPlayerBtn" type="button" style="width:100%">Log in</button>
+    <a href="register.html" style="display:block;text-align:center;padding:10px;color:#173b62;font-weight:700">Create a new player account / Register</a>
+    <div id="connectionStatus" role="status" style="font-size:13px;color:#526579">Enter your Game ID, phone number and password to log in.</div>
     <div id="passwordChangePanel" hidden style="display:grid;gap:8px"><strong>Password reset required</strong><input id="newPlayerPasswordInput" type="password" autocomplete="new-password" placeholder="Choose a new password (8+ characters)" style="padding:12px;border:1px solid #b8c6d6;border-radius:10px;font-size:16px"><button id="changePlayerPasswordBtn" type="button">Save new password</button></div>
   </div>
   <div class="controls">
@@ -151,7 +152,6 @@ document.getElementById("fullBtn").addEventListener("click",async()=>{
 const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const gameInput=document.getElementById("gameIdInput");
 const nameInput=document.getElementById("playerNameInput");
-const registerBtn=document.getElementById("registerPlayerBtn");
 const loginBtn=document.getElementById("loginPlayerBtn");
 const phoneInput=document.getElementById("playerPhoneInput");
 const passwordInput=document.getElementById("playerPasswordInput");
@@ -199,20 +199,17 @@ function numberLabel(n){return "BINGO"[Math.floor((Number(n)-1)/15)]+"-"+n;}
 function showCalledNumbers(){
   calledNumbersEl.textContent=calledNumbers.length?calledNumbers.map(numberLabel).join(", "):"No numbers called yet / ገና ቁጥር አልተጠራም";
 }
-function connectToGame(mode){
-  const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value, playerName=nameInput.value.trim();
-  if(!gameId||!phone||!password||(mode==="register"&&!playerName)){connectionStatus.textContent="Enter Game ID, phone number, password"+(mode==="register" ? " and player name." : ".");return;}
+function connectToGame(){
+  const gameId=gameInput.value.trim(), phone=phoneInput.value.trim(), password=passwordInput.value;
+  if(!gameId||!phone||!password){connectionStatus.textContent="Enter Game ID, phone number and password.";return;}
   if(password.length<8){connectionStatus.textContent="Password must be at least 8 characters.";return;}
   if(roomSocket){try{roomSocket.close()}catch(e){}}
   connectionStatus.textContent="Connecting to game…";
   try{roomSocket=new WebSocket(SERVER_URL+encodeURIComponent(gameId));}catch(e){connectionStatus.textContent="Connection failed.";return;}
   roomSocket.addEventListener("open",()=>{
     localStorage.setItem("eliasBingoGameIdV1",gameId);
-    localStorage.setItem("eliasBingoPlayerNameV1",playerName);
-    connectionStatus.textContent=mode==="register"?"Creating player account…":"Logging in…";
-    const payload={type:mode==="register"?"PLAYER_REGISTER":"PLAYER_LOGIN",phone,password};
-    if(mode==="register"){payload.name=playerName;payload.playerId=playerId;payload.playerToken=playerToken;}
-    roomSocket.send(JSON.stringify(payload));
+    connectionStatus.textContent="Logging in…";
+    roomSocket.send(JSON.stringify({type:"PLAYER_LOGIN",phone,password}));
   });
   roomSocket.addEventListener("message",event=>{
     let message;try{message=JSON.parse(event.data)}catch(e){return}
@@ -256,11 +253,10 @@ function connectToGame(mode){
     if(message.type==="CARD_REQUEST_RESULT"){pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";render();}
     if(message.type==="ERROR"){document.getElementById("purchaseStatus").textContent=message.message||"Error";connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
   });
-  roomSocket.addEventListener("close",()=>{connectionStatus.textContent="Disconnected."});
-  roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error."});
+  roomSocket.addEventListener("close",()=>{if(!connectionStatus.textContent.startsWith("Server:"))connectionStatus.textContent="Disconnected.";});
+  roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error.";});
 }
-registerBtn.addEventListener("click",()=>connectToGame("register"));
-loginBtn.addEventListener("click",()=>connectToGame("login"));
+loginBtn.addEventListener("click",connectToGame);
 document.getElementById("changePlayerPasswordBtn").addEventListener("click",()=>{
  if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){connectionStatus.textContent="Log in first.";return;}
  const next=document.getElementById("newPlayerPasswordInput").value;
