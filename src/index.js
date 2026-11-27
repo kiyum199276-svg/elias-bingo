@@ -492,7 +492,7 @@ export class BingoRoom {
       const claimNumbers=Array.isArray(this.roomState.calledNumbers)?[...this.roomState.calledNumbers]:[];
       this.roomState.claims[claimId] = {claimId,playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:claimNumbers,pattern:this.roomState.pattern,patternName:this.roomState.patternName,gameRound:Number(this.roomState.gameRound)||0,status:"pending",claimedAt:Date.now()};
       await this.saveState();
-      this.broadcast({type:"BINGO_CLAIM",claimId,playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,claimedAt:Date.now()});
+      this.broadcast({type:"BINGO_CLAIM",claimId,playerId,playerName:player.name,cardNumber,cardValues,calledNumbers:this.roomState.calledNumbers,patternName:this.roomState.patternName,pattern:this.roomState.pattern,patternMode:this.roomState.patternMode,gameRound:Number(this.roomState.gameRound)||0,claimedAt:Date.now()});
       sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber,claimId}));
       return;
     }
