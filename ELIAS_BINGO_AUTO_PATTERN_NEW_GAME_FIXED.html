@@ -314,7 +314,7 @@ nav.actions.no-print{background:#11100df2!important;border:1px solid #514329!imp
 <header><div class="brand">🎱 ELIAS BINGO</div><div class="sub">የADMIN መቆጣጠሪያ • 300 ካርዶች • B 1–75</div><div id="headerPattern" class="header-pattern">🎯 የጨዋታ ፓተርን: በራስ-ሰር ይመረጣል</div>
 <div class="headerTools no-print"><button id="fullscreenBtn" onclick="toggleFullscreen()">⛶ Full Screen</button><button id="installBtn" class="installBtn" onclick="installApp()" style="display:none">⬇ App ጫን</button></div></header>
 <main>
-<nav class="actions no-print" style="justify-content:center;position:sticky;top:0;z-index:10;background:#0c1020;padding:8px;border-radius:10px"><button class="gold" id="page1Btn" onclick="showPage(1)">1. የጨዋታ ዝግጅት</button><button class="secondary" id="page2Btn" onclick="startGame()">2. ቁጥር መጥራት / አሸናፊ</button><button class="secondary" id="page3Btn" onclick="showPage(3)">3. License Activation</button><button class="secondary" id="page4Btn" onclick="showPage(4)">4. Admin 20% / የቀን ሪፖርት</button></nav>
+<nav class="actions no-print" style="justify-content:center;position:sticky;top:0;z-index:10;background:#0c1020;padding:8px;border-radius:10px"><button class="gold" id="page1Btn" onclick="showPage(1)">1. የጨዋታ ዝግጅት</button><button class="secondary" id="page2Btn" onclick="startGame()">2. ቁጥር መጥራት / አሸናፊ</button><button class="secondary" id="page4Btn" onclick="showPage(4)">4. Admin 20% / የቀን ሪፖርት</button></nav>
 <div id="page1">
 <section class="panel">
 <h2>የጨዋታ ማጠቃለያ</h2><div class="stats">
@@ -448,24 +448,6 @@ nav.actions.no-print{background:#11100df2!important;border:1px solid #514329!imp
 </div>
 </div>
 
-<div id="page3" style="display:none">
-<section class="panel">
-<h2>🔐 3. License Activation — የሶፍትዌር ፈቃድ</h2>
-<p class="muted">ይህ ገጽ የዚህን Browser የመጫኛ መለያ (Installation ID) ያሳያል። ይህ የኮምፒውተር ፋብሪካ Serial Number አይደለም።</p>
-<div class="panel" style="background:#111827">
-<label for="licenseDeviceId">የኮምፒውተር / Installation ID</label>
-<input id="licenseDeviceId" readonly style="font-weight:bold;letter-spacing:1px">
-<div class="actions"><button class="secondary" onclick="copyLicenseId()">ID ኮፒ አድርግ</button><button class="secondary" onclick="sendLicenseRequest()">በEmail ላክ</button></div>
-</div>
-<label for="licenseKeyInput">Activation Key አስገባ</label>
-<input id="licenseKeyInput" autocomplete="off" placeholder="የተሰጠህን Activation Key እዚህ አስገባ">
-<div class="actions"><button class="gold" onclick="activateLicense()">Activate License</button><button class="secondary" onclick="checkLicenseStatus()">License Status</button></div>
-<div id="licenseStatus" class="muted" role="status" aria-live="polite"></div>
-<p class="muted" style="margin-top:14px">ለActivation Key ለመጠየቅ የInstallation ID ወደ ባለቤቱ በስልክ ወይም Email ላክ። የማረጋገጫ ጊዜ እስከ 6 ሰዓት ሊወስድ ይችላል።</p>
-<div class="actions"><a href="mailto:elum199276@gmail.com?subject=BINGO%20License%20Activation" style="color:#f5c542">elum199276@gmail.com</a><a href="tel:0977320235" style="color:#f5c542">0977320235</a></div>
-</section>
-
-</div>
 <div id="page4" style="display:none">
 <section class="panel">
 <h2>3. Admin 20% — የአስተዳዳሪ ድርሻ</h2>
@@ -872,20 +854,9 @@ let eliasAnnouncementAudio=null;
 function playEliasAnnouncement(src,onended){try{if(eliasAnnouncementAudio){eliasAnnouncementAudio.pause();eliasAnnouncementAudio.currentTime=0;}eliasAnnouncementAudio=new Audio(src);eliasAnnouncementAudio.preload='auto';if(onended)eliasAnnouncementAudio.onended=onended;const p=eliasAnnouncementAudio.play();if(p&&p.catch)p.catch(()=>{if(onended)onended();});}catch(e){if(onended)onended();}}
 function announceGameStarting(){if(!s.sound)return;if(window.speechSynthesis)speechSynthesis.cancel();playEliasAnnouncement(ELIAS_START_AUDIO); }
 function startGame(){if(!s.active.length)return msg('መጀመሪያ የሚጫወቱ ካርዶችን ምረጥ።');if(!s.gameStarted){if(s.patternMode==='auto'){if(!s.patternPrepared){s.pattern=pickAutoPattern();s.patternHistory=[...(s.patternHistory||[]),s.pattern].slice(-100);}s.patternPrepared=false;renderPattern();msg('AUTO Pattern ተመርጧል: '+names[s.pattern]);}else if(!s.pattern){return msg('Admin የድል Pattern ይምረጥ።');}const d=getDaily(),total=s.active.length*(Number(s.price)||0);d.games++;d.cards+=s.active.length;d.income+=total;d.admin+=total*.2;d.prize+=total*.8;s.gameStarted=true;save();renderReports();announceGameStarting();playBingoCue('start');}showPage(2);}
-function showPage(n){if(n!==3&&!isLicenseValid()){n=3;}[1,2,3,4].forEach(i=>{document.getElementById('page'+i).style.display=n===i?'block':'none';document.getElementById('page'+i+'Btn').className=n===i?'gold':'secondary';});if(n===3)initLicensePage();if(n===4)renderReports();window.scrollTo(0,0);}
+function showPage(n){[1,2,4].forEach(i=>{const page=document.getElementById('page'+i),btn=document.getElementById('page'+i+'Btn');if(page)page.style.display=n===i?'block':'none';if(btn)btn.className=n===i?'gold':'secondary';});if(n===4)renderReports();window.scrollTo(0,0);}
 function renderCalledNumberBall(n){const ball=document.getElementById('calledNumberBall');if(!ball)return;if(!n){ball.style.display='none';return;}ball.style.display='flex';ball.querySelector('.called-ball-letter').textContent=letter(n);ball.querySelector('strong').textContent=String(n);ball.style.animation='none';void ball.offsetWidth;ball.style.animation='calledBallPop .32s ease-out';}
 function renderLiveBoard(){const box=document.getElementById('liveBingoBoard');if(!box)return;if(box.dataset.built!=='1'){const frag=document.createDocumentFragment();for(let r=0;r<5;r++){const tag=document.createElement('div');tag.className='ball rowLetter';tag.textContent='BINGO'[r];frag.append(tag);for(let c=1;c<=15;c++){const n=r*15+c,el=document.createElement('div');el.className='ball';el.textContent=n;el.dataset.number=String(n);frag.append(el);}}box.replaceChildren(frag);box.dataset.built='1';}const called=getCalledSet();box.querySelectorAll('[data-number]').forEach(el=>el.classList.toggle('hit',called.has(Number(el.dataset.number))));renderCalledNumberBall(s.called.length?s.called[s.called.length-1]:null);}
-const LICENSE_CONTACT_EMAIL='elum199276@gmail.com';
-function getInstallationId(){let id=localStorage.getItem('eliasBingoInstallationId');if(!id){id='EB-'+Array.from(crypto.getRandomValues(new Uint8Array(10))).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();localStorage.setItem('eliasBingoInstallationId',id);}return id;}
-function initLicensePage(){const el=document.getElementById('licenseDeviceId');if(el)el.value=getInstallationId();checkLicenseStatus();}
-function copyLicenseId(){const id=getInstallationId();if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(id).then(()=>licenseMsg('Installation ID ተኮፒ ተደርጓል።')).catch(()=>licenseMsg('ID: '+id));}else{document.getElementById('licenseDeviceId').select();licenseMsg('ID ን መርጠህ Copy አድርግ።');}}
-function sendLicenseRequest(){const id=getInstallationId();const subject=encodeURIComponent('BINGO License Activation Request');const body=encodeURIComponent('Please issue an activation key for this Installation ID:\n'+id+'\n\nName:');location.href='mailto:'+LICENSE_CONTACT_EMAIL+'?subject='+subject+'&body='+body;}
-function licenseMsg(t){const e=document.getElementById('licenseStatus');if(e)e.textContent=t;}
-// Basic client-side demo check only; a key embedded in HTML cannot provide strong copy protection.
-function makeDemoLicenseKey(id){let h=2166136261;const v=id+'|ELIAS-BINGO-HTML-DEMO-2026';for(let i=0;i<v.length;i++){h^=v.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(16).toUpperCase().padStart(8,'0');}
-function activateLicense(){const id=getInstallationId();const entered=(document.getElementById('licenseKeyInput').value||'').trim().toUpperCase().replace(/[^A-F0-9]/g,'');if(entered!==makeDemoLicenseKey(id)){licenseMsg('❌ Activation Key ትክክል አይደለም። Installation ID እንደገና አረጋግጥ።');return;}localStorage.setItem('eliasBingoLicenseFor',id);localStorage.setItem('eliasBingoLicenseActive','yes');licenseMsg('✅ የDemo License ተቀብሏል።');showPage(1);}
-function isLicenseValid(){const id=getInstallationId();return localStorage.getItem('eliasBingoLicenseActive')==='yes'&&localStorage.getItem('eliasBingoLicenseFor')===id;}
-function checkLicenseStatus(){const ok=isLicenseValid();licenseMsg(ok?'✅ License Active (በዚህ Browser ላይ)':'🔒 License አልተነቃም። Activation Key አስገባ።');}
 function init(){document.getElementById('ticketPrice').value=s.price;render();if(s.called.length)document.getElementById('current').textContent=letter(s.called[s.called.length-1])+'-'+s.called[s.called.length-1];}
 init();showPage(1);
 // Periodic full-page refresh/save removed: state is saved at each action, and the Admin report refreshes when opened.
