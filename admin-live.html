@@ -53,12 +53,21 @@ function connect(){
  socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));status.textContent="Connected. Share Game ID: "+input.value;});
  socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==="ADMIN_AUTH_OK"){document.getElementById("adminFrame").style.display="block";status.textContent="Admin connected • Game ID: "+input.value;sync();}
-  if(m.type==="ROOM_STATE"&&m.data){renderPlayers(m.data);renderDepositSettings(m.data);renderCardRequests(m.data);renderWithdrawals(m.data);}
+  if(m.type==="ROOM_STATE"&&m.data){
+    const roundKey="eliasBingoAdminRound:"+input.value,previousRound=localStorage.getItem(roundKey),incomingRound=String(Number(m.data.gameRound)||0);
+    if(previousRound!==null&&previousRound!==incomingRound){
+     try{const raw=localStorage.getItem("eliasBingoAdminV3");if(raw){const state=JSON.parse(raw);state.called=[];localStorage.setItem("eliasBingoAdminV3",JSON.stringify(state));}}catch{}
+     lastSent="";
+    }
+    localStorage.setItem(roundKey,incomingRound);
+    renderPlayers(m.data);renderDepositSettings(m.data);renderCardRequests(m.data);renderWithdrawals(m.data);renderWinnerClaims(m.data);
+   }
   if(m.type==="DEPOSIT_CONFIG_SAVED"){status.textContent="Deposit settings saved.";}
   if(m.type==="ADMIN_CARD_ASSIGNED"){const d=getAdminDoc();if(d&&d.getElementById("assignCardStatus"))d.getElementById("assignCardStatus").textContent="Card "+m.cardNumber+" assigned successfully.";status.textContent="Card assigned.";}
   if(m.type==="PLAYER_PASSWORD_RESET"){const d=getAdminDoc();if(d&&d.getElementById("resetPlayerPasswordStatus"))d.getElementById("resetPlayerPasswordStatus").textContent="Temporary password set for "+m.phone+". Give it to the player privately; they must change it after login.";if(d&&d.getElementById("temporaryPlayerPassword"))d.getElementById("temporaryPlayerPassword").value="";status.textContent="Player password reset.";}
-  if(m.type==="BINGO_CLAIM"){status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber;showClaimInAdminPage(m);}
-  if(m.type==="ERROR")status.textContent="Server: "+m.message;
+  if(m.type==="BINGO_CLAIM"){status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber+" • Check all winners for this call."; }
+  if(m.type==="ROUND_WINNERS_SETTLED")status.textContent="🏆 "+m.winnerCount+" winner(s) paid "+Number(m.prizePool).toFixed(2)+" ETB total; each received "+Number(m.sharePerWinner).toFixed(2)+" ETB. New round started.";
+   if(m.type==="ERROR")status.textContent="Server: "+m.message;
  });
  socket.addEventListener("close",()=>{status.textContent="Disconnected. Refresh or reconnect.";});
  socket.addEventListener("error",()=>{status.textContent="Connection error. Check Worker deployment.";});
@@ -77,7 +86,7 @@ function installPage2Panel(){
  const requests=d.getElementById("remoteCardRequests");
  requests.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-card-action]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({type:btn.dataset.cardAction,playerId:btn.dataset.playerId,cardNumber:Number(btn.dataset.cardNumber)}));btn.disabled=true;btn.textContent="Sending…";});
  const claims=d.getElementById("remoteClaimBody");
- claims.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-confirm-claim]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;const amount=Number(d.getElementById("winnerPrizeAmount").value);if(!Number.isFinite(amount)||amount<=0){status.textContent="Enter a valid prize amount.";return;}socket.send(JSON.stringify({type:"ADMIN_CONFIRM_WINNER",claimId:btn.dataset.confirmClaim,amount,currency:"ETB"}));btn.disabled=true;btn.textContent="Confirming…";});
+ claims.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-confirm-group]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;if(!confirm("Confirm all pending winners for this same called-number set? The 80% prize pool will be split equally between distinct winning players, and the next round will start."))return;socket.send(JSON.stringify({type:"ADMIN_CONFIRM_WINNER_GROUP",claimId:btn.dataset.confirmGroup}));btn.disabled=true;btn.textContent="Paying winners and restarting…";});
  const withdrawals=d.getElementById("remoteWithdrawals");
  withdrawals.addEventListener("click",ev=>{const btn=ev.target.closest("button[data-withdrawal-action]");if(!btn||!socket||socket.readyState!==WebSocket.OPEN)return;socket.send(JSON.stringify({type:btn.dataset.withdrawalAction,withdrawalId:btn.dataset.withdrawalId,decision:btn.dataset.decision}));btn.disabled=true;btn.textContent="Sending…";});
  const deposits=d.getElementById("remoteDepositRequests");
@@ -151,6 +160,35 @@ function renderWithdrawals(room){
   if(item.status==="approved")add("Mark paid","ADMIN_MARK_WITHDRAWAL_PAID","");
   root.appendChild(row);
  });
+}
+function renderWinnerClaims(room){
+ if(!installPage2Panel())return;
+ const d=getAdminDoc(),body=d&&d.getElementById("remoteClaimBody"),pattern=d&&d.getElementById("remotePattern");
+ if(!body)return;
+ const pending=Object.values(room.claims||{}).filter(c=>c&&c.status==="pending").sort((x,y)=>(x.claimedAt||0)-(y.claimedAt||0));
+ pattern.textContent="Winning pattern: "+(room.patternName||PATTERN_NAMES[room.pattern]||room.pattern||"Not set")+" • Round "+(Number(room.gameRound)||0);
+ body.innerHTML="";
+ if(!pending.length){body.textContent="No pending Bingo claims.";return;}
+ const groups=new Map();
+ for(const claim of pending){const key=String(Number(claim.gameRound)||0)+"|"+JSON.stringify(claim.calledNumbers||[]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(claim);}
+ for(const group of groups.values()){
+  const winnerIds=[...new Set(group.map(c=>c.playerId))],sales=Number(room.roundSalesTotal)||0,pool=sales*.8,share=winnerIds.length?pool/winnerIds.length:0;
+  const section=d.createElement("section");section.style.cssText="border:2px solid #d6a72b;border-radius:10px;padding:10px;margin:10px 0";
+  const heading=d.createElement("div");heading.className="claim-meta";heading.textContent="Same winning call • "+winnerIds.length+" distinct winner(s) • 80% pool "+pool.toFixed(2)+" ETB • Each gets "+share.toFixed(2)+" ETB";section.appendChild(heading);
+  const note=d.createElement("div");note.className="claim-note";note.textContent="Confirm only after every player who completed this pattern on this call has submitted BINGO. Multiple cards belonging to one player count as one winner.";section.appendChild(note);
+  for(const claim of group){
+   const title=d.createElement("div");title.className="claim-meta";title.textContent="🏆 "+(claim.playerName||"Player")+" • Card "+claim.cardNumber;section.appendChild(title);
+   if(Array.isArray(claim.cardValues)&&claim.cardValues.length===25){
+    const grid=d.createElement("div");grid.className="claim-card";
+    ["B","I","N","G","O"].forEach(x=>{const c=d.createElement("div");c.className="claim-cell claim-head";c.textContent=x;grid.appendChild(c)});
+    const called=new Set(claim.calledNumbers||[]);
+    claim.cardValues.forEach(v=>{const c=d.createElement("div");c.className="claim-cell"+(v==="FREE"?" free":(called.has(Number(v))?" hit":""));c.textContent=String(v);grid.appendChild(c)});
+    section.appendChild(grid);
+   }
+  }
+  const confirm=d.createElement("button");confirm.type="button";confirm.textContent="Confirm all "+group.length+" claim(s) • Pay "+share.toFixed(2)+" ETB each • Start next round";confirm.dataset.confirmGroup=group[0].claimId;confirm.disabled=pool<=0;confirm.style.cssText="display:block;margin-top:8px;padding:10px 12px;background:#16865d;color:white;border:0;border-radius:6px;font-weight:bold";section.appendChild(confirm);
+  body.appendChild(section);
+ }
 }
 function showClaimInAdminPage(m){
  if(!installPage2Panel())return;
