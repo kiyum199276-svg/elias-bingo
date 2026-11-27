@@ -40,7 +40,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
 .player-card .letter{min-height:22px;font-size:13px}
 .player-card .actions{gap:4px;margin-top:6px;flex-direction:column}
 .player-card .actions button{width:100%;padding:8px 4px;font-size:11px}
-.player-card .claim-status{font-size:10px}
+.player-card .claim-status{font-size:10px}.selection-preview{margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}.selection-preview .board{max-width:430px;margin:8px auto}.selection-preview .cell{font-size:clamp(15px,4.5vw,22px)}.selection-preview-status{font-size:13px;font-weight:700;margin:4px 0;color:#526579}
 .current-call-circle{width:94px;height:94px;margin:12px auto;border-radius:50%;background:#080808;color:#fff;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;box-shadow:0 4px 12px #0003}
 @media(max-width:360px){main{padding:10px 8px 22px}.board{gap:3px;padding:5px}.cell{border-radius:6px}.player-card{padding:5px}.player-card .cell{font-size:10px}.player-card .letter{font-size:11px;min-height:19px}button{padding:11px 10px}.current-call-circle{width:82px;height:82px;font-size:36px}}
 .app-window{width:100%}.app-window[hidden]{display:none!important}#selectionPattern{margin:8px 0;padding:12px;border-radius:10px;background:#fff8df;color:#352b13;font-weight:700}#window2 .panel{margin-top:0}
@@ -74,6 +74,7 @@ footer{text-align:center;color:#77879a;font-size:11px;padding:8px 12px 20px}
     <button id="showBtn" type="button">ካርዱን አሳይ</button>
     <button id="addCardBtn" type="button">Add card</button>
   </div>
+  <section class="selection-preview"><strong id="selectionPreviewTitle">Card preview</strong><div id="selectionPreviewStatus" class="selection-preview-status">Choose a card and tap View Card to inspect it before adding.</div><div id="selectionCardPreview"></div></section>
   <div id="selectedCards" class="help">Selected cards: 1</div><div id="cardPurchaseInfo" class="help">Connect to see card price and wallet balance.</div><button id="purchaseCardsBtn" type="button" style="width:100%;margin:8px 0;padding:12px;border:0;border-radius:10px;background:#16865d;color:white;font-weight:bold">Confirm purchase</button><div id="purchaseStatus" class="help" role="status"></div>
   <p class="help">የካርድ ቁጥርህን ምረጥ። ቁጥር ላይ በጣትህ ስትነካ ምልክት ይደረጋል፤ እንደገና ስትነካው ይሰረዛል።</p>
 </section>
@@ -120,8 +121,8 @@ for(let n=1;n<=300;n++){const opt=document.createElement("option");opt.value=Str
 function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(saved))}catch(e){alert("ምልክቶቹን ማስቀመጥ አልተቻለም።")}}
 document.getElementById("clearAllMarks").addEventListener("click",()=>{if(!confirm("Clear all your marked numbers on every card?"))return;saved={};save();render();});
 function updateGamePrizeInfo(room){const el=document.getElementById("gamePrizeInfo");if(!el)return;const owners=new Set();let paidTotal=0;Object.values(room&&room.players||{}).forEach(player=>{(Array.isArray(player&&player.approvedCards)?player.approvedCards:[]).forEach(n=>{const card=Number(n);if(Number.isInteger(card)&&card>=1&&card<=300)owners.add(card);});(Array.isArray(player&&player.cardPurchases)?player.cardPurchases:[]).forEach(x=>paidTotal+=Number(x&&x.total)||0);});const sold=owners.size;const pool=paidTotal*.8;el.hidden=false;el.textContent="Card price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB":"Not set by Admin")+" • Total winning prize pool (80%): "+pool.toFixed(2)+" ETB • Cards assigned/purchased: "+sold;}
-function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";const info=document.getElementById("cardPurchaseInfo");if(info)info.textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—")+" • "+(depositConfig.enabled?"Wallet payment":"Cash payment to Admin; Admin approval required");const purchaseButton=document.getElementById("purchaseCardsBtn");if(purchaseButton)purchaseButton.textContent=depositConfig.enabled?"Buy with Wallet":"Send Cash Request to Admin";}
-document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1;if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();render();}else{alert("Card "+n+" is already selected.");}});
+function updateSelectedCards(){const el=document.getElementById("selectedCards");el.textContent=selectedCards.length?"Selected cards: "+selectedCards.join(", "):"No cards added yet. Choose a card, then tap Add card.";const info=document.getElementById("cardPurchaseInfo");if(info)info.textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—")+" • "+(depositConfig.enabled?"Wallet payment":"Cash payment to Admin; Admin approval required");const purchaseButton=document.getElementById("purchaseCardsBtn");if(purchaseButton)purchaseButton.textContent=depositConfig.enabled?"Buy with Wallet":"Send Cash Request to Admin";renderCardOptions();renderSelectionPreview();}
+document.getElementById("addCardBtn").addEventListener("click",()=>{const n=Number(select.value)||1,owner=roomCards[String(n)],ownerId=owner&&(typeof owner==="string"?owner:owner.playerId);if(ownerId&&ownerId!==playerId){document.getElementById("purchaseStatus").textContent="Card "+n+" is unavailable. Please choose another card.";return;}if((approvedCards||[]).includes(n)||(pendingCards||[]).includes(n)){document.getElementById("purchaseStatus").textContent="Card "+n+" is already registered or waiting for Admin approval.";return;}if(!selectedCards.includes(n)){selectedCards.push(n);selectedCards.sort((a,b)=>a-b);updateSelectedCards();renderSelectionPreview();}else{alert("Card "+n+" is already selected.");}});
 const PATTERN_NAMES={"6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any Line","2v2h":"2 Up + 2 Row","3v3h":"3 Up + 3 Row","different":"4 Different Lines","blackout":"Blackout","fourcorners":"Four Corners","xpattern":"X Pattern","plus":"Plus / Cross","topbottom":"Top + Bottom","frame":"Outside Frame","innerbox":"Inner Box","postage":"Postage Stamp"};
 const PATTERN_CELLS={"blackout":[...Array(25).keys()],"fourcorners":[0,4,20,24],"xpattern":[0,6,12,18,24,4,8,16,20],"plus":[2,7,10,11,12,13,14,17,22],"topbottom":[0,1,2,3,4,20,21,22,23,24],"frame":[0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24],"innerbox":[6,7,8,11,13,16,17,18]};
 function renderPatternBanner(){const el=document.getElementById("winningPattern");el.innerHTML="";if(!winningPattern){el.hidden=true;return;}el.hidden=false;el.append(document.createTextNode("Winning pattern: "+(winningPatternName||PATTERN_NAMES[winningPattern]||winningPattern)+" ("+(winningPatternMode==="auto"?"Auto":"Admin selected")+")"));const note=document.createElement("small");note.textContent=PATTERN_CELLS[winningPattern]?"Gold outlines show the target pattern on each card.":"Follow the pattern rule selected by the Admin.";el.appendChild(note);}
@@ -170,8 +171,8 @@ function render() {
     boardsContainer.appendChild(cardWrap);
   });
 }
-document.getElementById("showBtn").addEventListener("click",()=>{const status=document.getElementById("purchaseStatus");if(status&&/Phone number or password is incorrect|Enter your phone number and password/.test(status.textContent))status.textContent="";render();});
-select.addEventListener("change",render);
+document.getElementById("showBtn").addEventListener("click",()=>{const status=document.getElementById("purchaseStatus");if(status&&/Phone number or password is incorrect|Enter your phone number and password/.test(status.textContent))status.textContent="";renderSelectionPreview();});
+select.addEventListener("change",renderSelectionPreview);
 document.getElementById("fullBtn").addEventListener("click",async()=>{
   try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(e){}
 });
@@ -197,6 +198,26 @@ let myPlayerRecord=null;
 let myWithdrawals=[];
 let approvedCards=[];
 let pendingCards=[];
+let roomCards={};
+function renderCardOptions(){
+ const currentValue=select.value;
+ Array.from(select.options).forEach(opt=>{
+  const n=Number(opt.value),owner=roomCards[String(n)],ownerId=owner&&(typeof owner==="string"?owner:owner.playerId),status=owner&&typeof owner==="object"?owner.status:"";
+  opt.disabled=!!ownerId&&ownerId!==playerId;
+  opt.textContent="ካርድ "+n+(ownerId&&ownerId!==playerId?" • Unavailable":ownerId===playerId?(status==="pending"?" • Pending": " • Registered"):" • Available");
+ });
+ if(currentValue)select.value=currentValue;
+}
+function renderSelectionPreview(){
+ const n=Number(select.value)||1,values=DECK[String(n)],root=document.getElementById("selectionCardPreview"),title=document.getElementById("selectionPreviewTitle"),statusEl=document.getElementById("selectionPreviewStatus");
+ if(!root||!values)return;
+ const owner=roomCards[String(n)],ownerId=owner&&(typeof owner==="string"?owner:owner.playerId),ownerStatus=owner&&typeof owner==="object"?owner.status:"";
+ title.textContent="Bingo Card "+n;
+ statusEl.textContent=!ownerId?"Available to select":ownerId===playerId?(ownerStatus==="pending"?"Your request is waiting for Admin approval.":"This card is already registered to you."):"Unavailable — another player has selected this card.";
+ root.innerHTML="";const board=document.createElement("section");board.className="board";board.setAttribute("aria-label","Preview of Bingo card "+n);
+ ["B","I","N","G","O"].forEach(letter=>{const el=document.createElement("div");el.className="cell letter";el.textContent=letter;board.appendChild(el);});
+ values.forEach(value=>{const el=document.createElement("div");el.className="cell"+(value==="FREE"?" free":"");el.textContent=String(value);board.appendChild(el);});root.appendChild(board);
+}
 const PLAYER_ID_KEY="eliasBingoPlayerIdV1";
 const PLAYER_TOKEN_KEY="eliasBingoPlayerTokenV1";
 let playerId=localStorage.getItem(PLAYER_ID_KEY);
@@ -272,7 +293,7 @@ function connectToGame(){
       winningPatternMode=message.data.patternMode==="manual"?"manual":"auto";
       winningPatternName=typeof message.data.patternName==="string"?message.data.patternName:"";
       const patternView=document.getElementById("selectionPattern");if(patternView)patternView.textContent="Game Pattern: "+(winningPatternName||PATTERN_NAMES[winningPattern]||winningPattern||"Waiting for Admin");
-      depositConfig=message.data.depositConfig||{enabled:false};cardPrice=Number(message.data.cardPrice)||0;
+      depositConfig=message.data.depositConfig||{enabled:false};cardPrice=Number(message.data.cardPrice)||0;roomCards=message.data.cards||{};
       document.getElementById("cardPurchaseInfo").textContent="Price: "+(cardPrice>0?cardPrice.toFixed(2)+" ETB per card":"Not set by Admin")+" • Selected total: "+(cardPrice>0?(cardPrice*selectedCards.length).toFixed(2)+" ETB":"—")+" • "+(depositConfig.enabled?"Wallet payment":"Cash payment to Admin; Admin approval required");
       document.getElementById("purchaseCardsBtn").textContent=depositConfig.enabled?"Buy with Wallet":"Send Cash Request to Admin";
       const allDeposits=message.data.deposits||{};
