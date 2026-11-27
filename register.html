@@ -36,15 +36,11 @@ button,a.link{display:block;width:100%;padding:14px;border:0;border-radius:10px;
 const SERVER_URL="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const gameInput=document.getElementById("gameId"),phoneInput=document.getElementById("phone"),passwordInput=document.getElementById("password"),confirmInput=document.getElementById("confirmPassword"),status=document.getElementById("status"),registerButton=document.getElementById("register");
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";}catch(e){}
-function getPlayerId(){
- let id=localStorage.getItem("eliasBingoPlayerIdV1");
- if(!id){id=crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2);localStorage.setItem("eliasBingoPlayerIdV1",id);}
- return id;
-}
-function getPlayerToken(){
- let token=localStorage.getItem("eliasBingoPlayerTokenV1");
- if(!token){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);token=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");localStorage.setItem("eliasBingoPlayerTokenV1",token);}
- return token;
+function createRegistrationIdentity(){
+ const playerId=crypto.randomUUID?crypto.randomUUID():"p"+Date.now()+Math.random().toString(16).slice(2);
+ const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);
+ const playerToken=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
+ return {playerId,playerToken};
 }
 registerButton.addEventListener("click",()=>{
  const gameId=gameInput.value.trim(),phone=phoneInput.value.trim(),password=passwordInput.value,confirmPassword=confirmInput.value;
@@ -60,7 +56,8 @@ registerButton.addEventListener("click",()=>{
  socket.addEventListener("open",()=>{
   localStorage.setItem("eliasBingoGameIdV1",gameId);
   status.textContent="Creating your account…";
-  socket.send(JSON.stringify({type:"PLAYER_REGISTER",phone,password,playerId:getPlayerId(),playerToken:getPlayerToken()}));
+  const identity=createRegistrationIdentity();
+  socket.send(JSON.stringify({type:"PLAYER_REGISTER",phone,password,...identity}));
  });
  socket.addEventListener("message",event=>{
   let message;try{message=JSON.parse(event.data)}catch(e){return;}
