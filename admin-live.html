@@ -17,7 +17,7 @@
 const SERVER="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const API="https://elias-bingo.elum199276kk.workers.dev";
 const input=document.getElementById("gameId"),status=document.getElementById("status");
-let socket=null,token="",lastSent="",timer=null,adminFrameReady=false;
+let socket=null,token="",lastSent="",timer=null,adminFrameReady=false,latestRoomState=null;
 const savedId=localStorage.getItem("eliasBingoAdminRoomId");
 const savedToken=localStorage.getItem("eliasBingoAdminRoomToken");
 if(savedId&&savedToken){input.value=savedId;token=savedToken;document.getElementById("newRoom").disabled=true;document.getElementById("newRoom").textContent="Permanent Game ID";connect();}
@@ -54,6 +54,7 @@ function connect(){
  socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==="ADMIN_AUTH_OK"){document.getElementById("adminFrame").style.display="block";status.textContent="Admin connected • Game ID: "+input.value;sync();}
   if(m.type==="ROOM_STATE"&&m.data){
+    latestRoomState=m.data;
     const roundKey="eliasBingoAdminRound:"+input.value,previousRound=localStorage.getItem(roundKey),incomingRound=String(Number(m.data.gameRound)||0);
     if(previousRound!==null&&previousRound!==incomingRound){
      try{const raw=localStorage.getItem("eliasBingoAdminV3");if(raw){const state=JSON.parse(raw);state.called=[];localStorage.setItem("eliasBingoAdminV3",JSON.stringify(state));}}catch{}
@@ -65,7 +66,10 @@ function connect(){
   if(m.type==="DEPOSIT_CONFIG_SAVED"){status.textContent="Deposit settings saved.";}
   if(m.type==="ADMIN_CARD_ASSIGNED"){const d=getAdminDoc();if(d&&d.getElementById("assignCardStatus"))d.getElementById("assignCardStatus").textContent="Card "+m.cardNumber+" assigned successfully.";status.textContent="Card assigned.";}
   if(m.type==="PLAYER_PASSWORD_RESET"){const d=getAdminDoc();if(d&&d.getElementById("resetPlayerPasswordStatus"))d.getElementById("resetPlayerPasswordStatus").textContent="Temporary password set for "+m.phone+". Give it to the player privately; they must change it after login.";if(d&&d.getElementById("temporaryPlayerPassword"))d.getElementById("temporaryPlayerPassword").value="";status.textContent="Player password reset.";}
-  if(m.type==="BINGO_CLAIM"){status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber+" • Check all winners for this call."; }
+  if(m.type==="BINGO_CLAIM"){
+    status.textContent="🏆 BINGO CLAIM • "+m.playerName+" • Card "+m.cardNumber+" • Check all winners for this call.";
+    if(latestRoomState){if(!latestRoomState.claims)latestRoomState.claims={};latestRoomState.claims[m.claimId]={claimId:m.claimId,playerId:m.playerId,playerName:m.playerName,cardNumber:m.cardNumber,cardValues:m.cardValues,calledNumbers:m.calledNumbers||[],pattern:m.pattern||"",patternName:m.patternName||"",gameRound:Number(m.gameRound)||0,status:"pending",claimedAt:m.claimedAt||Date.now()};renderWinnerClaims(latestRoomState);}
+   }
   if(m.type==="ROUND_WINNERS_SETTLED")status.textContent="🏆 "+m.winnerCount+" winner(s) paid "+Number(m.prizePool).toFixed(2)+" ETB total; each received "+Number(m.sharePerWinner).toFixed(2)+" ETB. New round started.";
    if(m.type==="ERROR")status.textContent="Server: "+m.message;
  });
@@ -205,7 +209,7 @@ function showClaimInAdminPage(m){
  const note=d.createElement("div");note.className="claim-note";note.textContent="Check the called numbers and winning pattern before confirming the winner. Confirm only after manual verification.";body.appendChild(note);
  if(m.claimId){const label=d.createElement("label");label.textContent="Prize amount (ETB): ";const amount=d.createElement("input");amount.id="winnerPrizeAmount";amount.type="number";amount.min="0.01";amount.step="0.01";amount.placeholder="Prize amount";amount.style.cssText="width:130px;padding:8px;border:1px solid #aaa;border-radius:6px";label.appendChild(amount);body.appendChild(label);const confirm=d.createElement("button");confirm.type="button";confirm.textContent="Confirm winner & add prize";confirm.dataset.confirmClaim=m.claimId;confirm.style.cssText="display:block;margin-top:8px;padding:9px 12px;background:#16865d;color:white;border:0;border-radius:6px;font-weight:bold";body.appendChild(confirm);}
 }
-document.getElementById("adminFrame").addEventListener("load",()=>{adminFrameReady=true;installPage2Panel();sync();});
+document.getElementById("adminFrame").addEventListener("load",()=>{adminFrameReady=true;installPage2Panel();if(latestRoomState)renderWinnerClaims(latestRoomState);sync();});
 function sync(){
  if(!socket||socket.readyState!==WebSocket.OPEN)return;
  try{
