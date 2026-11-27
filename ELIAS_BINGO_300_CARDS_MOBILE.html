@@ -206,7 +206,7 @@ if(!playerToken){const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);pl
 try{gameInput.value=localStorage.getItem("eliasBingoGameIdV1")||"";nameInput.value=localStorage.getItem("eliasBingoPlayerNameV1")||""}catch(e){}
 function renderDepositPanel(){
  const panel=document.getElementById("depositPanel"),details=document.getElementById("depositDetails"),status=document.getElementById("depositStatus"),input=document.getElementById("depositReference"),button=document.getElementById("submitDeposit");
- const isOn=!!depositConfig.enabled;panel.hidden=!isOn;document.getElementById("walletPanel").hidden=!isOn;document.querySelector(".controls").hidden=!isOn;document.getElementById("selectedCards").hidden=!isOn;document.getElementById("cardPurchaseInfo").hidden=!isOn;document.getElementById("purchaseCardsBtn").hidden=!isOn;
+ const isOn=!!depositConfig.enabled;panel.hidden=!isOn;document.getElementById("walletPanel").hidden=!isOn;document.querySelector(".controls").hidden=false;document.getElementById("selectedCards").hidden=false;document.getElementById("cardPurchaseInfo").hidden=false;document.getElementById("purchaseCardsBtn").hidden=false;
  if(!isOn){details.textContent="";return;}
  panel.hidden=false;
  if(!depositConfig.enabled){details.textContent="No deposit is required for this game.";status.textContent="You can purchase cards after adding wallet balance.";input.hidden=true;button.hidden=true;return;}
