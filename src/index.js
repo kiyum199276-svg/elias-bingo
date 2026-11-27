@@ -501,7 +501,7 @@ export class BingoRoom {
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
       const firstId=String(data.claimId||""),first=this.roomState.claims&&this.roomState.claims[firstId];
       if(!first||first.status!=="pending"){sender.send(JSON.stringify({type:"ERROR",message:"The winner group is no longer pending."}));return;}
-      const sameGroup=Object.values(this.roomState.claims||{}).filter(c=>c&&c.status==="pending"&&Number(c.gameRound||0)===Number(first.gameRound||0)&&JSON.stringify(c.calledNumbers||[])===JSON.stringify(first.calledNumbers||[]));
+      const sameGroup=Object.values(this.roomState.claims||{}).filter(c=>c&&c.status==="pending"&&Number(c.gameRound||0)===Number(first.gameRound||0)&&String(c.pattern||"")===String(first.pattern||"")&&JSON.stringify(c.calledNumbers||[])===JSON.stringify(first.calledNumbers||[]));
       const winnerIds=[...new Set(sameGroup.map(c=>c.playerId))];
       if(!winnerIds.length){sender.send(JSON.stringify({type:"ERROR",message:"No pending winners were found."}));return;}
       const pool=Number(this.roomState.roundSalesTotal)||0,totalPrize=pool*0.8;
