@@ -216,6 +216,11 @@ function syncPage1CardPrice(room){
 function hookPage2WinnerCard(doc){
  const d=doc||getAdminDoc(),win=d&&d.defaultView;
  if(!win)return;
+ if(!win.__eliasMoneyRenderHook&&typeof win.render==="function"){
+  win.__eliasMoneyRenderHook=true;
+  const originalRender=win.render;
+  win.render=function(){const result=originalRender.apply(this,arguments);if(latestRoomState)renderMoneySummary(latestRoomState,d);return result;};
+ }
  if(!win.__eliasOriginalPublicWinner&&typeof win.renderPublicWinner==="function"){
   win.__eliasOriginalPublicWinner=win.renderPublicWinner;
   win.renderPublicWinner=function(){
@@ -225,28 +230,33 @@ function hookPage2WinnerCard(doc){
  }
 }
 function renderMoneySummary(room,doc){
- const d=doc||getAdminDoc();if(!d)return;
- const players=room&&room.players?room.players:{};
- const registeredPlayers=Object.values(players).filter(p=>Array.isArray(p.approvedCards)&&p.approvedCards.length>0);
- const uniqueCards=new Set();
- registeredPlayers.forEach(p=>p.approvedCards.forEach(n=>{const card=Number(n);if(Number.isInteger(card)&&card>=1&&card<=300)uniqueCards.add(card)}));
- const sales=[];
- Object.values(players).forEach(p=>(Array.isArray(p.cardPurchases)?p.cardPurchases:[]).forEach(purchase=>{
-  const cards=Array.isArray(purchase.cards)?purchase.cards:[];
-  const total=Number(purchase.total);
-  const price=Number(purchase.pricePerCard)||Number(room&&room.cardPrice)||0;
-  sales.push({cards,total:Number.isFinite(total)&&total>0?total:price*cards.length});
+ const d=doc||getAdminDoc();if(!d||!room)return;
+ const players=room.players||{},cards=room.cards||{},approved=new Set();
+ Object.entries(cards).forEach(([number,owner])=>{
+  const id=Number(number),playerId=owner&&(typeof owner==="string"?owner:owner.playerId);
+  const state=owner&&typeof owner==="object"?String(owner.status||"approved"):"approved";
+  if(Number.isInteger(id)&&id>=1&&id<=300&&playerId&&state==="approved")approved.add(id);
+ });
+ Object.values(players).forEach(player=>(Array.isArray(player.approvedCards)?player.approvedCards:[]).forEach(number=>{
+  const id=Number(number);if(Number.isInteger(id)&&id>=1&&id<=300)approved.add(id);
  }));
- const revenue=sales.reduce((sum,sale)=>sum+sale.total,0);
- const playersInput=d.getElementById("moneyPlayers");
- if(playersInput)playersInput.value=String(registeredPlayers.length);
- const incomeInput=d.getElementById("totalMoney");
- if(incomeInput)incomeInput.value=revenue.toFixed(2)+" ብር";
- const prize=d.getElementById("prizeMoney");
- if(prize)prize.textContent=(revenue*.8).toFixed(2);
- const registered=d.getElementById("registeredCount");
- if(registered)registered.textContent=uniqueCards.size+"/300";
+ const count=approved.size,sales=[];
+ Object.values(players).forEach(player=>(Array.isArray(player.cardPurchases)?player.cardPurchases:[]).forEach(purchase=>{
+  const purchased=Array.isArray(purchase.cards)?purchase.cards:[];
+  const total=Number(purchase.total),price=Number(purchase.pricePerCard)||Number(room.cardPrice)||0;
+  sales.push(Number.isFinite(total)&&total>0?total:price*purchased.length);
+ }));
+ const revenue=sales.reduce((sum,total)=>sum+total,0);
+ d.__eliasRemoteRegistrationCount=true;
+ const set=(id,value,field="value")=>{const el=d.getElementById(id);if(el)el[field]=String(value);};
+ set("registeredCount",count+"/300","textContent");
+ set("activeCount",count,"textContent");
+ set("moneyPlayers",count);
+ set("totalMoney",revenue.toFixed(2)+" ብር");
+ set("adminMoney",(revenue*.2).toFixed(2)+" ብር","textContent");
+ set("prizeMoney",(revenue*.8).toFixed(2)+" ብር","textContent");
 }
+
 function renderDepositSettings(room){
  if(!installPage2Panel())return;
  const d=getAdminDoc(),cfg=room.depositConfig||{enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""};
