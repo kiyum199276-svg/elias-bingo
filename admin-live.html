@@ -18,9 +18,10 @@ const SERVER="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const API="https://elias-bingo.elum199276kk.workers.dev";
 const input=document.getElementById("gameId"),status=document.getElementById("status");
 let socket=null,token="",lastSent="",timer=null,heartbeat=null,adminFrameReady=false,latestRoomState=null;
+// Do not auto-connect to an old browser-created room on refresh.
 const savedId=localStorage.getItem("eliasBingoAdminRoomId");
 const savedToken=localStorage.getItem("eliasBingoAdminRoomToken");
-if(savedId&&savedToken){input.value=savedId;token=savedToken;document.getElementById("newRoom").disabled=true;document.getElementById("newRoom").textContent="Permanent Game ID";connect();}
+if(savedId&&savedToken){status.textContent="Old saved room "+savedId+" was not reconnected. Sign in to your registered Admin account.";}
 async function loginAdminAccount(){
  const phone=document.getElementById("adminPhone").value.trim();
  const password=document.getElementById("adminPassword").value;
@@ -30,6 +31,13 @@ async function loginAdminAccount(){
   const response=await fetch(API+"/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone,password})});
   const data=await response.json().catch(()=>({error:"Invalid server response."}));
   if(!response.ok)throw new Error(data.error||"Admin login failed.");
+  // If this Admin account belongs to a different game, clear only the stale
+  // browser room credentials and old called-number cache; keep server records intact.
+  if(savedId && savedId!==data.gameId){
+   localStorage.removeItem("eliasBingoAdminRoomId");
+   localStorage.removeItem("eliasBingoAdminRoomToken");
+   try{const raw=localStorage.getItem("eliasBingoAdminV3");if(raw){const state=JSON.parse(raw);state.called=[];localStorage.setItem("eliasBingoAdminV3",JSON.stringify(state));}}catch{}
+  }
   token=data.token;input.value=data.gameId;
   document.getElementById("adminPassword").value="";
   document.getElementById("newRoom").disabled=true;
