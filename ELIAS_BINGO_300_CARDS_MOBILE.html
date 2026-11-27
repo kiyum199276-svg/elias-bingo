@@ -256,7 +256,8 @@ function connectToGame(){
       if(!message.mustChangePassword)showPlayerWindow("window2");
       if(message.mustChangePassword){document.getElementById("passwordChangePanel").scrollIntoView({behavior:"smooth",block:"center"});}
     }
-    if(message.type==="BINGO_CLAIM_RECEIVED"){connectionStatus.textContent="BINGO claim received for card "+message.cardNumber+". Wait for Admin confirmation.";}\n    if(message.type==="PLAYER_PASSWORD_CHANGED"){
+    if(message.type==="BINGO_CLAIM_RECEIVED"){connectionStatus.textContent="BINGO claim received for card "+message.cardNumber+". Wait for Admin confirmation.";}
+    if(message.type==="PLAYER_PASSWORD_CHANGED"){
       document.getElementById("passwordChangePanel").hidden=true;
       document.getElementById("newPlayerPasswordInput").value="";
       connectionStatus.textContent="Password changed. Your account is ready.";
