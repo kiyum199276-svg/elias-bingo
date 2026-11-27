@@ -1,0 +1,60 @@
+name: Replace Admin HTML from uploaded ZIP
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: ZIP file path in the repository
+        required: true
+        default: ELIAS_BINGO_ADMIN_NO_LICENSE_UPLOAD.zip
+      target_path:
+        description: Existing Admin HTML file to replace
+        required: true
+        default: ELIAS_BINGO_AUTO_PATTERN_NEW_GAME_FIXED.html
+
+permissions:
+  contents: write
+
+jobs:
+  replace-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Extract and validate Admin HTML
+        env:
+          ZIP_PATH: ${{ inputs.zip_path }}
+          TARGET_PATH: ${{ inputs.target_path }}
+        run: |
+          python3 - <<'PY'
+          import os, zipfile
+          zip_path = os.environ["ZIP_PATH"]
+          target = os.environ["TARGET_PATH"]
+          if not os.path.isfile(zip_path):
+              raise SystemExit(f"ZIP not found in repository: {zip_path}")
+          with zipfile.ZipFile(zip_path) as z:
+              files = [i for i in z.infolist() if not i.is_dir()]
+              html = [i for i in files if i.filename.lower().endswith(".html")]
+              if len(html) != 1:
+                  raise SystemExit(f"Expected exactly one HTML file in ZIP; found {len(html)}")
+              info = html[0]
+              if info.file_size > 25 * 1024 * 1024:
+                  raise SystemExit("HTML file exceeds 25 MiB safety limit")
+              data = z.read(info)
+          os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+          with open(target, "wb") as f:
+              f.write(data)
+          os.remove(zip_path)
+          print(f"Replaced {target} with {len(data)} bytes from ZIP.")
+          PY
+
+      - name: Commit replacement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.target_path }}" "${{ inputs.zip_path }}"
+          git commit -m "Replace Admin HTML with no-license version"
+          git push origin HEAD:main
