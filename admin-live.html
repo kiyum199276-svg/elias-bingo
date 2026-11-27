@@ -18,10 +18,22 @@ const SERVER="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const API="https://elias-bingo.elum199276kk.workers.dev";
 const input=document.getElementById("gameId"),status=document.getElementById("status");
 let socket=null,token="",lastSent="",timer=null,heartbeat=null,adminFrameReady=false,latestRoomState=null;
-// Do not auto-connect to an old browser-created room on refresh.
+// Restore the registered Admin login after refresh while its server token remains valid.
 const savedId=localStorage.getItem("eliasBingoAdminRoomId");
 const savedToken=localStorage.getItem("eliasBingoAdminRoomToken");
-if(savedId&&savedToken){status.textContent="Old saved room "+savedId+" was not reconnected. Sign in to your registered Admin account.";}
+const ADMIN_SESSION_KEY="eliasBingoAdminAccountSession";
+function clearAdminAccountSession(){localStorage.removeItem(ADMIN_SESSION_KEY);}
+function restoreAdminAccountSession(){
+ try{
+  const saved=JSON.parse(localStorage.getItem(ADMIN_SESSION_KEY)||"null");
+  if(!saved||!saved.token||!saved.gameId||!saved.expiresAt||Date.now()>=saved.expiresAt){clearAdminAccountSession();return false;}
+  token=saved.token;input.value=saved.gameId;
+  document.getElementById("newRoom").disabled=true;
+  document.getElementById("newRoom").textContent="Owner-assigned Game ID";
+  status.textContent="Restoring Admin session for "+saved.gameId+"…";
+  connect();return true;
+ }catch{clearAdminAccountSession();return false;}
+}
 async function loginAdminAccount(){
  const phone=document.getElementById("adminPhone").value.trim();
  const password=document.getElementById("adminPassword").value;
@@ -39,6 +51,7 @@ async function loginAdminAccount(){
    try{const raw=localStorage.getItem("eliasBingoAdminV3");if(raw){const state=JSON.parse(raw);state.called=[];localStorage.setItem("eliasBingoAdminV3",JSON.stringify(state));}}catch{}
   }
   token=data.token;input.value=data.gameId;
+  localStorage.setItem(ADMIN_SESSION_KEY,JSON.stringify({token:data.token,gameId:data.gameId,expiresAt:Date.now()+Number(data.expiresIn||28800)*1000}));
   document.getElementById("adminPassword").value="";
   document.getElementById("newRoom").disabled=true;
   document.getElementById("newRoom").textContent="Owner-assigned Game ID";
@@ -47,6 +60,8 @@ async function loginAdminAccount(){
  finally{button.disabled=false;}
 }
 document.getElementById("adminLogin").addEventListener("click",loginAdminAccount);
+// Restore the registered Admin account only; never reconnect an old browser-created room.
+if(!restoreAdminAccountSession()&&savedId&&savedToken){status.textContent="Old saved room "+savedId+" was not reconnected. Sign in to your registered Admin account.";}
 function createRoom(){
  if(localStorage.getItem("eliasBingoAdminRoomId")&&localStorage.getItem("eliasBingoAdminRoomToken")){status.textContent="This Admin room already has its permanent Game ID: "+localStorage.getItem("eliasBingoAdminRoomId");document.getElementById("newRoom").disabled=true;return;}
  const id="ELIAS-"+Math.random().toString(36).slice(2,8).toUpperCase();
@@ -80,7 +95,10 @@ function connect(){
     if(latestRoomState){if(!latestRoomState.claims)latestRoomState.claims={};latestRoomState.claims[m.claimId]={claimId:m.claimId,playerId:m.playerId,playerName:m.playerName,cardNumber:m.cardNumber,cardValues:m.cardValues,calledNumbers:m.calledNumbers||[],pattern:m.pattern||"",patternName:m.patternName||"",gameRound:Number(m.gameRound)||0,status:"pending",claimedAt:m.claimedAt||Date.now()};renderWinnerClaims(latestRoomState);}
    }
   if(m.type==="ROUND_WINNERS_SETTLED")status.textContent="🏆 "+m.winnerCount+" winner(s) paid "+Number(m.prizePool).toFixed(2)+" ETB total; each received "+Number(m.sharePerWinner).toFixed(2)+" ETB. New round started.";
-   if(m.type==="ERROR")status.textContent="Server: "+m.message;
+   if(m.type==="ERROR"){
+    status.textContent="Server: "+m.message;
+    if(/disabled|password was reset|invalid admin|admin key rejected|session expired/i.test(m.message||""))clearAdminAccountSession();
+   }
  });
  socket.addEventListener("close",()=>{if(heartbeat){clearInterval(heartbeat);heartbeat=null;}status.textContent="Disconnected. Refresh or reconnect.";});
  socket.addEventListener("error",()=>{status.textContent="Connection error. Check Worker deployment.";});
