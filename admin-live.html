@@ -174,7 +174,7 @@ function renderWinnerClaims(room){
  body.innerHTML="";
  if(!pending.length){body.textContent="No pending Bingo claims.";return;}
  const groups=new Map();
- for(const claim of pending){const key=String(Number(claim.gameRound)||0)+"|"+JSON.stringify(claim.calledNumbers||[]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(claim);}
+ for(const claim of pending){const key=String(Number(claim.gameRound)||0)+"|"+String(claim.pattern||"")+"|"+JSON.stringify(claim.calledNumbers||[]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(claim);}
  for(const group of groups.values()){
   const winnerIds=[...new Set(group.map(c=>c.playerId))],sales=Number(room.roundSalesTotal)||0,pool=sales*.8,share=winnerIds.length?pool/winnerIds.length:0;
   const section=d.createElement("section");section.style.cssText="border:2px solid #d6a72b;border-radius:10px;padding:10px;margin:10px 0";
