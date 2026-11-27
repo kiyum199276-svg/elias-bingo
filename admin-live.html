@@ -17,7 +17,7 @@
 const SERVER="wss://elias-bingo.elum199276kk.workers.dev/room/";
 const API="https://elias-bingo.elum199276kk.workers.dev";
 const input=document.getElementById("gameId"),status=document.getElementById("status");
-let socket=null,token="",lastSent="",timer=null,adminFrameReady=false,latestRoomState=null;
+let socket=null,token="",lastSent="",timer=null,heartbeat=null,adminFrameReady=false,latestRoomState=null;
 const savedId=localStorage.getItem("eliasBingoAdminRoomId");
 const savedToken=localStorage.getItem("eliasBingoAdminRoomToken");
 if(savedId&&savedToken){input.value=savedId;token=savedToken;document.getElementById("newRoom").disabled=true;document.getElementById("newRoom").textContent="Permanent Game ID";connect();}
@@ -47,10 +47,11 @@ function createRoom(){
 }
 function connect(){
  if(!input.value||!token)return;
+ if(heartbeat){clearInterval(heartbeat);heartbeat=null;}
  if(socket)try{socket.close()}catch{}
  status.textContent="Connecting room "+input.value+"…";
  socket=new WebSocket(SERVER+encodeURIComponent(input.value));
- socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));status.textContent="Connected. Share Game ID: "+input.value;});
+ socket.addEventListener("open",()=>{socket.send(JSON.stringify({type:"ADMIN_AUTH",token}));heartbeat=setInterval(()=>{if(socket&&socket.readyState===WebSocket.OPEN)try{socket.send(JSON.stringify({type:"PING"}));}catch{}},15000);status.textContent="Connected. Share Game ID: "+input.value;});
  socket.addEventListener("message",e=>{let m;try{m=JSON.parse(e.data)}catch{return}
   if(m.type==="ADMIN_AUTH_OK"){document.getElementById("adminFrame").style.display="block";status.textContent="Admin connected • Game ID: "+input.value;sync();}
   if(m.type==="ROOM_STATE"&&m.data){
@@ -73,7 +74,7 @@ function connect(){
   if(m.type==="ROUND_WINNERS_SETTLED")status.textContent="🏆 "+m.winnerCount+" winner(s) paid "+Number(m.prizePool).toFixed(2)+" ETB total; each received "+Number(m.sharePerWinner).toFixed(2)+" ETB. New round started.";
    if(m.type==="ERROR")status.textContent="Server: "+m.message;
  });
- socket.addEventListener("close",()=>{status.textContent="Disconnected. Refresh or reconnect.";});
+ socket.addEventListener("close",()=>{if(heartbeat){clearInterval(heartbeat);heartbeat=null;}status.textContent="Disconnected. Refresh or reconnect.";});
  socket.addEventListener("error",()=>{status.textContent="Connection error. Check Worker deployment.";});
 }
 const PATTERN_NAMES={"six":"6 Any Line","five":"5 Any Line","four":"4 Any Line","6lines":"6 Any Line","5lines":"5 Any Line","4lines":"4 Any Line","2v2h":"2 Up + 2 Row","3v3h":"3 Up + 3 Row","different":"4 Different Lines","blackout":"Fully Black / Blackout","fourcorners":"Four Corners","xpattern":"X Pattern","plus":"Plus / Cross","topbottom":"Top + Bottom","frame":"Outside Frame","innerbox":"Inner Box","postage":"Postage Stamp"};
