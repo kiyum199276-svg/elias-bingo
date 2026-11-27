@@ -505,6 +505,25 @@ export class BingoRoom {
       sender.send(JSON.stringify({type:"BINGO_CLAIM_RECEIVED",cardNumber,claimId}));
       return;
     }
+    if (data.type === "ADMIN_REVIEW_BINGO_CLAIM") {
+      let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
+      if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
+      const claimId = String(data.claimId || "");
+      const verdict = String(data.verdict || "");
+      if (!claimId || !["rejected","passed"].includes(verdict)) {
+        sender.send(JSON.stringify({type:"ERROR",message:"Invalid Bingo claim review."})); return;
+      }
+      const claim = this.roomState.claims && this.roomState.claims[claimId];
+      if (!claim || claim.status !== "pending") {
+        sender.send(JSON.stringify({type:"ERROR",message:"This Bingo claim is no longer pending."})); return;
+      }
+      claim.status = verdict;
+      claim.reviewedAt = Date.now();
+      await this.saveState();
+      this.broadcast({type:"ROOM_STATE",data:this.roomState});
+      sender.send(JSON.stringify({type:"BINGO_CLAIM_REVIEWED",claimId,verdict}));
+      return;
+    }
     if (data.type === "ADMIN_CONFIRM_WINNER_GROUP") {
       let role = null; try { role = sender.deserializeAttachment()?.role; } catch {}
       if (role !== "admin") { sender.send(JSON.stringify({type:"ERROR",message:"Admin authorization required"})); return; }
