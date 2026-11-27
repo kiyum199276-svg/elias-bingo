@@ -221,6 +221,25 @@ function hookPage2WinnerCard(doc){
   const originalRender=win.render;
   win.render=function(){const result=originalRender.apply(this,arguments);if(latestRoomState)renderMoneySummary(latestRoomState,d);return result;};
  }
+ if(!win.__eliasOriginalStartGame&&typeof win.startGame==="function"){
+  win.__eliasOriginalStartGame=win.startGame;
+  win.startGame=function(){
+   if(latestRoomState){
+    const approved=[...new Set([
+     ...Object.entries(latestRoomState.cards||{}).filter(([number,owner])=>{
+      const id=Number(number),playerId=owner&&(typeof owner==="string"?owner:owner.playerId);
+      const state=owner&&typeof owner==="object"?String(owner.status||"approved"):"approved";
+      return Number.isInteger(id)&&id>=1&&id<=300&&playerId&&state==="approved";
+     }).map(([number])=>Number(number)),
+     ...Object.values(latestRoomState.players||{}).flatMap(player=>Array.isArray(player.approvedCards)?player.approvedCards.map(Number):[])
+    ])].filter(id=>Number.isInteger(id)&&id>=1&&id<=300).sort((a,b)=>a-b);
+    try{
+     win.eval("s.active="+JSON.stringify(approved)+";save();render();");
+    }catch(error){console.warn("Could not sync approved player cards before starting game",error);}
+   }
+   return win.__eliasOriginalStartGame.apply(this,arguments);
+  };
+ }
  if(!win.__eliasOriginalPublicWinner&&typeof win.renderPublicWinner==="function"){
   win.__eliasOriginalPublicWinner=win.renderPublicWinner;
   win.renderPublicWinner=function(){
@@ -240,13 +259,11 @@ function renderMoneySummary(room,doc){
  Object.values(players).forEach(player=>(Array.isArray(player.approvedCards)?player.approvedCards:[]).forEach(number=>{
   const id=Number(number);if(Number.isInteger(id)&&id>=1&&id<=300)approved.add(id);
  }));
- const count=approved.size,sales=[];
- Object.values(players).forEach(player=>(Array.isArray(player.cardPurchases)?player.cardPurchases:[]).forEach(purchase=>{
-  const purchased=Array.isArray(purchase.cards)?purchase.cards:[];
-  const total=Number(purchase.total),price=Number(purchase.pricePerCard)||Number(room.cardPrice)||0;
-  sales.push(Number.isFinite(total)&&total>0?total:price*purchased.length);
- }));
- const revenue=sales.reduce((sum,total)=>sum+total,0);
+ const count=approved.size;
+ const price=Math.max(0,Number(room.cardPrice)||0);
+ // The dashboard is for the current game: count each currently approved card once.
+ // Historical purchase records must not inflate today's/current-round totals.
+ const revenue=count*price;
  d.__eliasRemoteRegistrationCount=true;
  const set=(id,value,field="value")=>{const el=d.getElementById(id);if(el)el[field]=String(value);};
  set("registeredCount",count+"/300","textContent");
