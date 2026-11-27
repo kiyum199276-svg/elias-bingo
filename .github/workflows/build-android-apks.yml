@@ -37,11 +37,11 @@ jobs:
           gradle-version: '8.9'
       - name: Build APK
         working-directory: android
-        run: gradle assemble${{ matrix.role == 'owner' && 'Owner' || matrix.role == 'admin' && 'Admin' || 'Player' }}Release
+        run: gradle assemble${{ matrix.role == 'owner' && 'Owner' || matrix.role == 'admin' && 'Admin' || 'Player' }}Debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: elias-bingo-${{ matrix.role }}-apk
-          path: android/app/build/outputs/apk/${{ matrix.role }}/release/*.apk
+          path: android/app/build/outputs/apk/${{ matrix.role }}/debug/*.apk
           if-no-files-found: error
           retention-days: 30
