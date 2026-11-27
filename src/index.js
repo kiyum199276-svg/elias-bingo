@@ -115,6 +115,13 @@ export default {
         const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/admin-list");
         return ownerJson(await response.json(),response.status);
       }
+      if (url.pathname === "/owner/finance" && request.method === "GET") {
+        const month=String(url.searchParams.get("month")||new Date().toISOString().slice(0,7));
+        if(!/^\d{4}-\d{2}$/.test(month))return ownerJson({error:"Invalid month."},400);
+        const registryId=env.OWNER_REGISTRY.idFromName("global");
+        const response=await env.OWNER_REGISTRY.get(registryId).fetch("https://registry/finance?month="+encodeURIComponent(month));
+        return ownerJson(await response.json(),response.status);
+      }
       if (url.pathname === "/owner/admins" && request.method === "POST") {
         let body={}; try { body=await request.json(); } catch {}
         const phone=normalizePhone(body.phone), password=String(body.password||""), gameId=String(body.gameId||"").trim();
@@ -340,6 +347,7 @@ export class BingoRoom {
       if(!Array.isArray(player.cardPurchases))player.cardPurchases=[];
       player.cardPurchases.push({cards,pricePerCard:price,total,currency:"ETB",paymentMethod:"wallet",gameRound:Number(this.roomState.gameRound)||0,createdAt:Date.now()});
       this.roomState.roundSalesTotal=(Number(this.roomState.roundSalesTotal)||0)+total;
+      await this.recordOwnerRevenue(total);
       for(const n of cards)this.roomState.cards[String(n)]={playerId,status:"approved",paymentMethod:"wallet"};
       await this.saveState();this.broadcast({type:"ROOM_STATE",data:this.roomState});
       sender.send(JSON.stringify({type:"CARD_PURCHASE_SUCCESS",cards,total,balance:player.walletBalance}));return;
@@ -467,6 +475,7 @@ export class BingoRoom {
           if(!Array.isArray(player.cardPurchases))player.cardPurchases=[];
           player.cardPurchases.push({cards:[cardNumber],pricePerCard:cashPrice,total:cashPrice,currency:"ETB",paymentMethod:"cash",cashConfirmedByAdmin:true,gameRound:Number(this.roomState.gameRound)||0,createdAt:Date.now()});
           this.roomState.roundSalesTotal=(Number(this.roomState.roundSalesTotal)||0)+cashPrice;
+          await this.recordOwnerRevenue(cashPrice);
           owner.cashConfirmedByAdmin=true;
         }
       } else {
@@ -675,6 +684,21 @@ export class BingoRoom {
     sender.send(JSON.stringify({ type: "ERROR", message: "Unknown message type" }));
   }
 
+  async recordOwnerRevenue(amount) {
+    const value=Number(amount)||0;
+    if(value<=0||!this.roomState.gameId)return;
+    if(!Array.isArray(this.roomState.ownerRevenueEvents))this.roomState.ownerRevenueEvents=[];
+    const event={eventId:randomHex(16),gameId:this.roomState.gameId,amount:value,currency:"ETB",createdAt:Date.now()};
+    this.roomState.ownerRevenueEvents.push(event);
+    const pending=[...this.roomState.ownerRevenueEvents];
+    for(const item of pending){
+      try{
+        const id=this.env.OWNER_REGISTRY.idFromName("global");
+        const response=await this.env.OWNER_REGISTRY.get(id).fetch("https://registry/record-sale",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(item)});
+        if(response.ok)this.roomState.ownerRevenueEvents=this.roomState.ownerRevenueEvents.filter(x=>x.eventId!==item.eventId);
+      }catch{}
+    }
+  }
   async saveState() { this.roomState.updatedAt = Date.now(); await this.ctx.storage.put("roomState", this.roomState); }
   broadcast(data) {
     const message = JSON.stringify(data);
@@ -692,6 +716,32 @@ export class OwnerRegistry {
     if(url.pathname==="/admin-list" && request.method==="GET"){
       const admins=Object.values(this.admins).map(a=>({phone:a.phone,gameId:a.gameId,active:!!a.active,createdAt:a.createdAt,updatedAt:a.updatedAt,lastLoginAt:a.lastLoginAt||0}));
       return new Response(JSON.stringify({admins}),{headers:{"Content-Type":"application/json"}});
+    }
+    if(url.pathname==="/record-sale" && request.method==="POST"){
+      let body={};try{body=await request.json()}catch{}
+      const gameId=String(body.gameId||""),eventId=String(body.eventId||"");
+      const amount=Number(body.amount),createdAt=Number(body.createdAt)||Date.now(),currency=String(body.currency||"ETB").slice(0,8);
+      const admin=Object.values(this.admins).find(a=>a.gameId===gameId);
+      if(!admin||!eventId||!Number.isFinite(amount)||amount<=0)return new Response(JSON.stringify({error:"Invalid sale record or Admin not found."}),{status:400});
+      if(!this.financeEvents)this.financeEvents=await this.ctx.storage.get("financeEvents")||{};
+      if(this.financeEvents[eventId])return new Response(JSON.stringify({ok:true,duplicate:true}));
+      this.financeEvents[eventId]={eventId,gameId,adminPhone:admin.phone,amount,currency,createdAt,month:new Date(createdAt).toISOString().slice(0,7)};
+      await this.ctx.storage.put("financeEvents",this.financeEvents);
+      return new Response(JSON.stringify({ok:true}));
+    }
+    if(url.pathname==="/finance" && request.method==="GET"){
+      if(!this.financeEvents)this.financeEvents=await this.ctx.storage.get("financeEvents")||{};
+      const month=String(url.searchParams.get("month")||new Date().toISOString().slice(0,7));
+      const rows=Object.values(this.financeEvents).filter(e=>e.month===month);
+      const byAdmin={};
+      for(const e of rows){
+        const key=e.adminPhone+"|"+e.gameId;
+        if(!byAdmin[key])byAdmin[key]={adminPhone:e.adminPhone,gameId:e.gameId,sales:0,currency:e.currency,transactions:0};
+        byAdmin[key].sales+=Number(e.amount)||0;byAdmin[key].transactions++;
+      }
+      const admins=Object.values(byAdmin).map(a=>({...a,adminIncome:a.sales*0.20,ownerShare:a.sales*0.04,adminNet:a.sales*0.16}));
+      const totals=admins.reduce((t,a)=>({sales:t.sales+a.sales,adminIncome:t.adminIncome+a.adminIncome,ownerShare:t.ownerShare+a.ownerShare,adminNet:t.adminNet+a.adminNet}),{sales:0,adminIncome:0,ownerShare:0,adminNet:0});
+      return new Response(JSON.stringify({month,admins,totals,transactionCount:rows.length}),{headers:{"Content-Type":"application/json"}});
     }
     if(url.pathname==="/admin-create" && request.method==="POST"){
       let body={};try{body=await request.json()}catch{}
