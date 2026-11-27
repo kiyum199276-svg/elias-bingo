@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "elias-bingo-pwa-v2";
+const CACHE_NAME = "elias-bingo-pwa-v3";
 const APP_SHELL = [
   "/", "/index.html", "/offline.html", "/manifest.webmanifest",
   "/icons/elias-bingo.svg",
