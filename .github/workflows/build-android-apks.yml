@@ -1,47 +1,40 @@
-name: Build ELIAS BINGO Android APKs
+name: Build ELIAS BINGO Android APK
 
 on:
   workflow_dispatch:
   push:
+    branches: [main, master]
     paths:
-      - 'android/**'
-      - '.github/workflows/build-android-apks.yml'
+      - "android/**"
+      - ".github/workflows/build-android-apks.yml"
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build ${{ matrix.role }} APK
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        role: [owner, admin, player]
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
-      - name: Set up JDK 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
-          accept-android-sdk-licenses: true
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: "8.9"
       - name: Build APK
         working-directory: android
-        run: gradle assemble${{ matrix.role == 'owner' && 'Owner' || matrix.role == 'admin' && 'Admin' || 'Player' }}Debug
+        run: gradle --no-daemon assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: elias-bingo-${{ matrix.role }}-apk
-          path: android/app/build/outputs/apk/${{ matrix.role }}/debug/*.apk
+          name: ELIAS-BINGO-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
