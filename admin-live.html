@@ -224,10 +224,34 @@ function hookPage2WinnerCard(doc){
   };
  }
 }
+function renderMoneySummary(room,doc){
+ const d=doc||getAdminDoc();if(!d)return;
+ const players=room&&room.players?room.players:{};
+ const registeredPlayers=Object.values(players).filter(p=>Array.isArray(p.approvedCards)&&p.approvedCards.length>0);
+ const uniqueCards=new Set();
+ registeredPlayers.forEach(p=>p.approvedCards.forEach(n=>{const card=Number(n);if(Number.isInteger(card)&&card>=1&&card<=300)uniqueCards.add(card)}));
+ const sales=[];
+ Object.values(players).forEach(p=>(Array.isArray(p.cardPurchases)?p.cardPurchases:[]).forEach(purchase=>{
+  const cards=Array.isArray(purchase.cards)?purchase.cards:[];
+  const total=Number(purchase.total);
+  const price=Number(purchase.pricePerCard)||Number(room&&room.cardPrice)||0;
+  sales.push({cards,total:Number.isFinite(total)&&total>0?total:price*cards.length});
+ }));
+ const revenue=sales.reduce((sum,sale)=>sum+sale.total,0);
+ const playersInput=d.getElementById("moneyPlayers");
+ if(playersInput)playersInput.value=String(registeredPlayers.length);
+ const incomeInput=d.getElementById("totalMoney");
+ if(incomeInput)incomeInput.value=revenue.toFixed(2)+" ብር";
+ const prize=d.getElementById("prizeMoney");
+ if(prize)prize.textContent=(revenue*.8).toFixed(2);
+ const registered=d.getElementById("registeredCount");
+ if(registered)registered.textContent=uniqueCards.size+"/300";
+}
 function renderDepositSettings(room){
  if(!installPage2Panel())return;
  const d=getAdminDoc(),cfg=room.depositConfig||{enabled:false,amount:0,currency:"ETB",method:"Telebirr",account:""};
  syncPage1CardPrice(room);
+ renderMoneySummary(room,d);
  const enabled=d.getElementById("depositEnabled");
  if(d.activeElement!==enabled)enabled.checked=!!cfg.enabled;
  for(const [id,value] of [["depositAmount",cfg.amount||""],["depositCurrency",cfg.currency||"ETB"],["depositMethod",cfg.method||"Telebirr"],["depositAccount",cfg.account||""]]){
