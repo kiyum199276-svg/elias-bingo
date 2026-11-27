@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ELIAS BINGO • Owner Finance</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#101827;color:#edf2f7;font:15px Arial,sans-serif;padding:18px}
+main{max-width:1000px;margin:auto}h1{color:#f4c542}section,.panel{background:#1c293b;border:1px solid #34445c;border-radius:14px;padding:16px;margin:14px 0}
+input,button{font:inherit;padding:12px;border-radius:9px;border:1px solid #53647d;margin:5px 0;max-width:100%}input{background:#101827;color:white;width:100%}button{background:#f4c542;color:#17243a;font-weight:bold;border:0;cursor:pointer}button:disabled{opacity:.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.metric{background:#101827;border-radius:10px;padding:13px}.metric small{display:block;color:#aebbd0;margin-bottom:8px}.metric strong{font-size:22px;color:#f4c542}
+table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;padding:10px;border-bottom:1px solid #39485d}th{color:#f4c542} .scroll{overflow:auto}#dashboard{display:none}.muted{color:#aebbd0}#message{white-space:pre-wrap;color:#ffd36a}
+</style></head>
+<body><main>
+<h1>ELIAS BINGO — Owner Finance</h1>
+<p class="muted">Private monthly revenue report. Owner access only.</p>
+<section id="login">
+<h2>Owner login</h2>
+<input id="phone" inputmode="tel" autocomplete="username" placeholder="Owner phone number">
+<input id="password" type="password" autocomplete="current-password" placeholder="Owner password">
+<button id="loginButton">Log in</button>
+</section>
+<div id="dashboard">
+<section>
+<div class="grid">
+<div><label for="month">Report month</label><input id="month" type="month"></div>
+<div style="align-self:end"><button id="refresh">Load report</button></div>
+</div>
+</section>
+<section>
+<h2>Monthly totals</h2>
+<div class="grid">
+<div class="metric"><small>Total confirmed card sales</small><strong id="sales">0.00 ETB</strong></div>
+<div class="metric"><small>Admin income (20% of sales)</small><strong id="adminIncome">0.00 ETB</strong></div>
+<div class="metric"><small>Owner share (20% of Admin income)</small><strong id="ownerShare">0.00 ETB</strong></div>
+<div class="metric"><small>Admin keeps (80% of Admin income)</small><strong id="adminNet">0.00 ETB</strong></div>
+</div>
+<p class="muted" id="transactions"></p>
+</section>
+<section>
+<h2>Admin breakdown</h2>
+<div class="scroll"><table><thead><tr><th>Admin phone</th><th>Game ID</th><th>Card sales</th><th>Admin income 20%</th><th>Owner 20% of Admin income</th><th>Admin keeps</th><th>Sales count</th></tr></thead><tbody id="rows"><tr><td colspan="7">Log in to load the report.</td></tr></tbody></table></div>
+</section>
+<button id="logout" style="background:#d9e2ef">Log out</button>
+</div>
+<div id="message" role="status"></div>
+</main>
+<script>
+"use strict";
+const API="https://elias-bingo.elum199276kk.workers.dev";
+const $=id=>document.getElementById(id);let token="";
+const now=new Date();$("month").value=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+function money(v){return (Number(v)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+" ETB"}
+async function request(path,options={}){const response=await fetch(API+path,{...options,headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{}),...(options.headers||{})}});const data=await response.json().catch(()=>({error:"Invalid server response."}));if(!response.ok)throw new Error(data.error||"Request failed.");return data}
+async function load(){ $("message").textContent="Loading…";$("refresh").disabled=true;try{const data=await request("/owner/finance?month="+encodeURIComponent($("month").value));$("sales").textContent=money(data.totals.sales);$("adminIncome").textContent=money(data.totals.adminIncome);$("ownerShare").textContent=money(data.totals.ownerShare);$("adminNet").textContent=money(data.totals.adminNet);$("transactions").textContent="Month: "+data.month+" • Confirmed card-sale transactions: "+data.transactionCount;const body=$("rows");body.innerHTML="";if(!data.admins.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=7;td.textContent="No confirmed card sales recorded for this month.";tr.appendChild(td);body.appendChild(tr)}else for(const a of data.admins){const tr=document.createElement("tr");for(const v of [a.adminPhone,a.gameId,money(a.sales),money(a.adminIncome),money(a.ownerShare),money(a.adminNet),a.transactions]){const td=document.createElement("td");td.textContent=String(v);tr.appendChild(td)}body.appendChild(tr)}$("message").textContent=""}catch(e){$("message").textContent=e.message}finally{$("refresh").disabled=false}}
+$("loginButton").addEventListener("click",async()=>{$("loginButton").disabled=true;try{const data=await request("/owner/login",{method:"POST",body:JSON.stringify({phone:$("phone").value,password:$("password").value})});token=data.token;$("password").value="";$("login").style.display="none";$("dashboard").style.display="block";await load()}catch(e){$("message").textContent=e.message}finally{$("loginButton").disabled=false}});
+$("refresh").addEventListener("click",load);$("logout").addEventListener("click",()=>{token="";$("dashboard").style.display="none";$("login").style.display="block";$("message").textContent="Logged out."});
+</script></body></html>
