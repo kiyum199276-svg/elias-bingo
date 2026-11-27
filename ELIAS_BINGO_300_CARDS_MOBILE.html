@@ -170,7 +170,7 @@ function render() {
     boardsContainer.appendChild(cardWrap);
   });
 }
-document.getElementById("showBtn").addEventListener("click",render);
+document.getElementById("showBtn").addEventListener("click",()=>{const status=document.getElementById("purchaseStatus");if(status&&/Phone number or password is incorrect|Enter your phone number and password/.test(status.textContent))status.textContent="";render();});
 select.addEventListener("change",render);
 document.getElementById("fullBtn").addEventListener("click",async()=>{
   try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(e){}
@@ -294,7 +294,7 @@ function connectToGame(){
     if(message.type==="CARD_REQUEST_RESULT"){document.getElementById("purchaseStatus").textContent="Cash request sent to Admin. Please pay the Admin in cash and wait for approval.";selectedCards=[];updateSelectedCards();}
     if(message.type==="CARD_PURCHASE_SUCCESS"){document.getElementById("purchaseStatus").textContent="Purchase successful: cards "+message.cards.join(", ")+" • Paid "+Number(message.total).toFixed(2)+" ETB. Balance: "+Number(message.balance).toFixed(2)+" ETB.";selectedCards=[];updateSelectedCards();render();}
     if(message.type==="CARD_REQUEST_RESULT"){pendingCards=Array.isArray(message.pendingCards)?message.pendingCards:[];approvedCards=Array.isArray(message.approvedCards)?message.approvedCards:[];const unavailable=Array.isArray(message.unavailable)?message.unavailable:[];connectionStatus.textContent=unavailable.length?"Unavailable cards: "+unavailable.join(", "):"Card request received.";render();}
-    if(message.type==="ERROR"){document.getElementById("purchaseStatus").textContent=message.message||"Error";connectionStatus.textContent="Server: "+(message.message||"Error");if((message.message||"").startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=message.message;}
+    if(message.type==="ERROR"){const errorText=message.message||"Error";const isLoginError=/Phone number or password is incorrect|Enter your phone number and password|Enter Game ID, phone number and password|Password must be at least 8 characters/.test(errorText);connectionStatus.textContent="Server: "+errorText;if(!isLoginError)document.getElementById("purchaseStatus").textContent=errorText;if(errorText.startsWith("Insufficient balance"))document.getElementById("withdrawalStatus").textContent=errorText;}
   });
   roomSocket.addEventListener("close",()=>{if(!connectionStatus.textContent.startsWith("Server:"))connectionStatus.textContent="Disconnected.";});
   roomSocket.addEventListener("error",()=>{connectionStatus.textContent="Connection error.";});
