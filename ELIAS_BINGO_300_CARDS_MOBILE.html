@@ -165,7 +165,7 @@ function render() {
     const bingo=document.createElement("button");bingo.type="button";bingo.className="bingo-claim";bingo.textContent="BINGO!";
     bingo.disabled=!roomSocket||roomSocket.readyState!==WebSocket.OPEN;
     const claim=document.createElement("div");claim.className="claim-status";claim.textContent="Press BINGO if this card wins.";
-    bingo.addEventListener("click",()=>{if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}roomSocket.send(JSON.stringify({type:"BINGO_CLAIM",playerId,playerName:nameInput.value.trim(),cardNumber:cardNo,cardValues:values}));claim.textContent="Bingo claim sent to Admin.";});
+    bingo.addEventListener("click",()=>{if(!roomSocket||roomSocket.readyState!==WebSocket.OPEN){alert("Connect to the game first.");return;}roomSocket.send(JSON.stringify({type:"BINGO_CLAIM",playerId,playerName:nameInput.value.trim(),cardNumber:cardNo,cardValues:values,gameRound:currentGameRound,pattern:winningPattern,patternName:winningPatternName}));claim.textContent="Bingo claim sent to Admin. Admin is checking all winners for this call.";});
     actions.appendChild(bingo);actions.appendChild(claim);cardWrap.appendChild(actions);
     boardsContainer.appendChild(cardWrap);
   });
@@ -186,6 +186,7 @@ const connectionStatus=document.getElementById("connectionStatus");
 const calledNumbersEl=document.getElementById("calledNumbers");
 let roomSocket=null;
 let calledNumbers=[];
+let currentGameRound=0;
 let winningPattern="";
 let winningPatternMode="auto";
 let winningPatternName="";
@@ -255,13 +256,14 @@ function connectToGame(){
       if(!message.mustChangePassword)showPlayerWindow("window2");
       if(message.mustChangePassword){document.getElementById("passwordChangePanel").scrollIntoView({behavior:"smooth",block:"center"});}
     }
-    if(message.type==="PLAYER_PASSWORD_CHANGED"){
+    if(message.type==="BINGO_CLAIM_RECEIVED"){connectionStatus.textContent="BINGO claim received for card "+message.cardNumber+". Wait for Admin confirmation.";}\n    if(message.type==="PLAYER_PASSWORD_CHANGED"){
       document.getElementById("passwordChangePanel").hidden=true;
       document.getElementById("newPlayerPasswordInput").value="";
       connectionStatus.textContent="Password changed. Your account is ready.";
     }
     if(message.type==="ROOM_STATE"&&message.data){
       calledNumbers=Array.isArray(message.data.calledNumbers)?message.data.calledNumbers:[];
+      currentGameRound=Number(message.data.gameRound)||0;
       const roundGameId=gameInput.value.trim(),roundKey="eliasBingoRoundV1:"+roundGameId,incomingRound=Number(message.data.gameRound)||0,previousRound=localStorage.getItem(roundKey);
       if(previousRound!==null&&Number(previousRound)!==incomingRound){saved={};save();}
       localStorage.setItem(roundKey,String(incomingRound));
