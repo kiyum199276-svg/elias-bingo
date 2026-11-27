@@ -58,7 +58,7 @@ async function readSignedPayload(token, secret) {
 }
 async function verifyAdminSession(token, secret, gameId) {
   const payload=await readSignedPayload(token,secret);
-  return !!(payload && payload.role==="admin" && payload.gameId===gameId && payload.phone && payload.exp>Date.now());
+  return payload && payload.role==="admin" && payload.gameId===gameId && payload.phone && payload.exp>Date.now() ? payload : null;
 }
 function ownerJson(data,status=200) {
   return new Response(status===204?null:JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":OWNER_ORIGIN,"Access-Control-Allow-Headers":"Authorization, Content-Type","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Vary":"Origin"}});
